@@ -30,13 +30,17 @@ class HlsIntegration(unittest.TestCase):
             thread.start()
             try:
                 config = dict(ytdlp=[os.environ['VDH_ENGINE_PYTHON'], os.environ['VDH_YTDLP']], ffmpeg=os.environ.get('VDH_FFMPEG', 'ffmpeg'), downloads=str(root / 'downloads'))
-                bridge = host.Bridge(config, lambda message: None)
+                events = []
+                bridge = host.Bridge(config, events.append)
                 url = 'http://127.0.0.1:%s/master.m3u8' % server.server_port
                 catalog = bridge.inspect(url)
                 self.assertTrue(catalog['formats'])
                 result = bridge.handle(dict(id='local_hls', op='download', url=url, formatId=catalog['formats'][0]['id'], name='Local stream'))
                 metadata = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', result['filename']]))
                 self.assertEqual({s['codec_type'] for s in metadata['streams']}, {'video', 'audio'})
+                self.assertTrue(any(event.get('receivedBytes', 0) > 0 for event in events))
+                self.assertEqual(events[-1]['status'], 'complete')
+                self.assertGreater(events[-1]['fileSize'], 0)
             finally:
                 server.shutdown()
                 server.server_close()

@@ -1,3 +1,4 @@
+import { activeTransfer } from './transfers.js';
 const HOST = 'org.video_download_helper.local';
 let port;
 const requests = new Map();
@@ -15,7 +16,8 @@ function changeJobs(change) {
 function connection() {
   if (port) return port;
   if (!chrome.runtime.connectNative) throw new Error('This browser does not expose native messaging. Use Chrome or a compatible browser for the local engine.');
-  port = chrome.runtime.connectNative(HOST);
+  const created = chrome.runtime.connectNative(HOST);
+  port = created;
   port.onMessage.addListener(message => {
     if (message.event === 'progress') {
       changeJobs(jobs => { if (jobs[message.jobId]) jobs[message.jobId] = { ...jobs[message.jobId], ...message }; }).catch(console.warn);
@@ -29,6 +31,7 @@ function connection() {
   });
   port.onDisconnect.addListener(() => {
     const error = chrome.runtime.lastError?.message || 'Local engine disconnected';
+    if (port !== created) return;
     port = null;
     for (const request of requests.values()) { clearTimeout(request.timer); request.reject(new Error(error)); }
     requests.clear();
@@ -47,17 +50,24 @@ export function engineRequest(op, data = {}, id = crypto.randomUUID().replaceAll
 
 export async function engineReady() {
   if (!await chrome.permissions.contains({ permissions: ['nativeMessaging'] })) return false;
-  try { return Boolean((await engineRequest('ping')).ready); } catch { return false; }
+  try {
+    const info = await engineRequest('ping');
+    if (info.ready && info.progressVersion >= 2) return true;
+    const old = port; port = null; old?.disconnect();
+    return false;
+  } catch { return false; }
 }
 
 export async function startEngineDownload(item, name) {
+  if (!await engineReady()) throw new Error('Install or update the local engine from this release, then reconnect in Local engine.');
   const id = crypto.randomUUID().replaceAll('-', '');
   await changeJobs(jobs => {
-    if (Object.values(jobs).filter(job => !['complete', 'failed'].includes(job.status)).length >= 2) throw new Error('Two local downloads are running. Wait or cancel one first.');
-    for (const key of Object.keys(jobs).slice(0, Math.max(0, Object.keys(jobs).length - 19))) delete jobs[key];
-    jobs[id] = { jobId: id, title: item.title, status: 'starting', percent: 0 };
+    if (Object.values(jobs).filter(activeTransfer).length >= 2) throw new Error('Two local downloads are running. Wait or cancel one first.');
+    const finished = Object.keys(jobs).filter(key => !activeTransfer(jobs[key]));
+    for (const key of finished.slice(0, Math.max(0, finished.length - 19))) delete jobs[key];
+    jobs[id] = { jobId: id, backend: 'engine', sourceUrl: item.url, title: item.title, createdAt: Date.now(), totalBytes: item.size || 0, approximate: item.approximate, receivedBytes: 0, status: 'starting', percent: 0 };
   });
   engineRequest('download', { url: item.native.url, formatId: item.native.formatId, name }, id).catch(error =>
-    changeJobs(jobs => { jobs[id] = { ...jobs[id], status: 'failed', error: error.message }; }).catch(console.warn));
+    changeJobs(jobs => { jobs[id] = { ...jobs[id], status: /cancelled|canceled/i.test(error.message) ? 'cancelled' : 'failed', error: error.message }; }).catch(console.warn));
   return { jobId: id };
 }

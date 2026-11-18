@@ -1,8 +1,10 @@
 import { filename, groupMedia } from './media.js';
+import { activeTransfer, transferSummary, formatBytes } from './transfers.js';
 
 const $ = id => document.getElementById(id);
-let tabId, view = 'current', renderVersion = 0, jobsVersion = 0, refreshTimer, engineConnected = false;
-const selections = new Map(), names = new Map();
+let tabId, view = 'current', renderVersion = 0, transferVersion = 0, transferTimer, refreshTimer, engineConnected = false;
+const selections = new Map(), names = new Map(), cardViews = new Map();
+let transfers = [];
 async function request(type, extra = {}) {
   const result = await chrome.runtime.sendMessage({ type, tabId, ...extra });
   if (!result) throw new Error('Extension did not respond. Reopen Video Download Helper and try again.');
@@ -25,7 +27,7 @@ function button(text, className, action) {
   return node;
 }
 const sizeLabel = bytes => bytes ? bytes < 1048576 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB` : 'Size unknown';
-const qualityLabel = item => `${item.format} · ${item.width && item.height ? `${item.width}×${item.height}` : item.qualityLabel || 'Original'}${item.codec ? ` · ${item.codec}` : ''} · ${item.bitrate ? `${Math.round(item.bitrate)} kb/s bitrate` : item.stream ? 'Stream' : `${item.approximate && item.size ? '~' : ''}${sizeLabel(item.size)}`}`;
+const qualityLabel = item => `${item.format} · ${item.width && item.height ? `${item.width}×${item.height}` : item.qualityLabel || 'Resolution unavailable'}${item.codec ? ` · ${item.codec}` : ''} · ${item.bitrate ? `${Math.round(item.bitrate)} kb/s bitrate` : item.stream ? 'Stream' : `${item.approximate && item.size ? '~' : ''}${sizeLabel(item.size)}`}`;
 function showSetup() { $('engine-setup').hidden = false; $('extension-id').textContent = `Extension ID: ${chrome.runtime.id}`; }
 async function findFormats(url) {
   if (!engineConnected) { showSetup(); return; }
@@ -33,6 +35,57 @@ async function findFormats(url) {
   try { await request('engine-inspect', url ? { url } : {}); await render(); status('Formats ready. Choose a quality and download.'); }
   catch (error) { status(error.message, true); }
   finally { $('formats').disabled = false; }
+}
+function transferView() {
+  let current;
+  const node = element('div', '', 'transfer');
+  node.hidden = true; node.setAttribute('role', 'group'); node.setAttribute('aria-label', 'Download status');
+  const line = element('div', '', 'transfer-line');
+  const meter = element('div', '', 'transfer-meter');
+  const progress = document.createElement('progress'); progress.max = 100; progress.setAttribute('aria-label', 'Download progress');
+  const percent = element('span', '', 'transfer-percent');
+  const speed = element('span', '', 'transfer-speed');
+  meter.append(progress, percent, speed);
+  const stop = button('Stop', 'stop', async () => { await request('cancel-download', { jobId: current.jobId }); await loadTransfers(true); });
+  const pause = button('Pause', 'pause', async () => { await request('pause-download', { jobId: current.jobId }); await loadTransfers(true); });
+  line.append(meter, pause, stop);
+  const detail = element('p', '', 'transfer-detail');
+  node.append(line, detail);
+  return { node, update(job) {
+    current = job; node.hidden = !job;
+    if (!job) return;
+    node.dataset.state = job.status;
+    if (Number.isFinite(job.percent)) { progress.value = job.percent; percent.textContent = `${Math.floor(job.percent)}%`; }
+    else { progress.removeAttribute('value'); percent.textContent = job.status === 'starting' ? 'Starting…' : 'Downloading…'; }
+    speed.textContent = job.status === 'complete' ? 'Saved' : job.status === 'cancelled' ? 'Stopped' : job.status === 'failed' ? 'Failed' : job.status === 'merging' ? 'Combining…' : job.speed > 0 ? `${formatBytes(job.speed)}/s` : '';
+    stop.hidden = !activeTransfer(job);
+    pause.hidden = job.backend !== 'browser' || !['downloading', 'paused'].includes(job.status);
+    pause.textContent = job.status === 'paused' ? 'Resume' : 'Pause';
+    detail.textContent = transferSummary(job);
+  } };
+}
+function applyTransfers() {
+  const displayed = new Set();
+  for (const view of cardViews.values()) {
+    const urls = new Set(view.items.map(item => item.url));
+    const newest = [...transfers].reverse();
+    const job = newest.find(job => urls.has(job.sourceUrl) && activeTransfer(job)) || newest.find(job => job.sourceUrl === view.selectedUrl());
+    view.update(job);
+    if (job) displayed.add(job.jobId);
+  }
+  const other = transfers.filter(job => activeTransfer(job) && !displayed.has(job.jobId));
+  $('jobs').replaceChildren(...other.map(job => {
+    const row = element('div', '', 'job'); row.append(element('strong', job.title || 'Video'));
+    const view = transferView(); view.update(job); row.append(view.node); return row;
+  }));
+}
+async function loadTransfers(refresh = false) {
+  const version = ++transferVersion;
+  const jobs = await request('download-jobs', { refresh });
+  if (version !== transferVersion) return;
+  transfers = jobs; applyTransfers();
+  if (jobs.some(activeTransfer) && !transferTimer) transferTimer = setTimeout(() => { transferTimer = null; loadTransfers(true).catch(error => status(error.message, true)); }, 500);
+  if (!jobs.some(activeTransfer)) { clearTimeout(transferTimer); transferTimer = null; }
 }
 function videoCard(group) {
   const { key, items } = group;
@@ -85,8 +138,10 @@ function videoCard(group) {
   const download = button('Download', 'primary', async () => {
     if (item.stream) { await findFormats(item.url); return; }
     status('Starting download…');
-    const result = await request('download', { url: item.url, name: name.value });
-    status(typeof result === 'object' ? 'Downloading with the local engine. Progress is shown below.' : 'Download started. Open Browser downloads for progress.');
+    await request('download', { url: item.url, name: name.value });
+    status('');
+    await loadTransfers(true);
+    cardViews.get(key)?.focusStop();
   });
   const note = element('p', 'This video has separate streams. Find its qualities with the free local engine.', 'stream-note');
   const update = () => { download.textContent = item.stream ? 'Find qualities' : 'Download'; note.hidden = !item.stream; };
@@ -95,7 +150,7 @@ function videoCard(group) {
     selections.set(key, item.url);
     if (names.has(key)) { name.value = filename(item, names.get(key)); names.set(key, name.value); }
     else name.value = item.customName || filename(item);
-    name.title = name.value; details.textContent = new URL(item.url).hostname; update();
+    name.title = name.value; details.textContent = new URL(item.url).hostname; update(); applyTransfers();
   });
   const save = button(view === 'saved' ? 'Remove' : 'Save', 'secondary', async () => {
     await request(view === 'saved' ? 'remove' : 'save', { url: item.url, name: name.value });
@@ -103,6 +158,15 @@ function videoCard(group) {
     await render();
   });
   actions.append(quality, download, save); card.append(actions, note); update();
+  const transfer = transferView(); card.append(transfer.node);
+  cardViews.set(key, { items, selectedUrl: () => item.url, focusStop: () => transfer.node.querySelector('.stop:not([hidden])')?.focus(), update(job) {
+    transfer.update(job);
+    const running = activeTransfer(job);
+    actions.hidden = running; name.disabled = running; rename.disabled = running;
+    const dismiss = card.querySelector('.dismiss'); if (dismiss) dismiss.disabled = running;
+    note.hidden = running || !item.stream;
+    download.textContent = item.stream ? 'Find qualities' : job?.status === 'complete' ? 'Download again' : ['failed', 'cancelled'].includes(job?.status) ? 'Retry' : 'Download';
+  } });
   return card;
 }
 function editing() { return ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName); }
@@ -114,6 +178,7 @@ async function render() {
   const groups = groupMedia(record.items);
   if (view === 'current') $('count').textContent = groups.length;
   $('summary').textContent = `${groups.length} ${groups.length === 1 ? 'video' : 'videos'} ${view === 'saved' ? 'saved' : 'found'}`;
+  cardViews.clear();
   const nodes = groups.map(videoCard);
   if (!groups.length) {
     const empty = element('div', '', 'empty');
@@ -121,13 +186,14 @@ async function render() {
     nodes.push(empty);
   }
   $('videos').replaceChildren(...nodes);
+  applyTransfers();
   $('hint').textContent = view === 'saved' ? 'Saved links may expire. Download videos you want to keep.' : record.engineUrl ? 'Choose a format. The local engine combines video and audio automatically.' : record.blobs ? 'This player uses separate streams. Use Find all qualities with the local engine.' : 'Edit a filename to rename. Only available source qualities are shown.';
 }
 function scheduleRender() {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => render().catch(error => status(error.message, true)), 100);
 }
-$('videos').addEventListener('focusout', scheduleRender);
+$('videos').addEventListener('focusout', event => { if (event.target.matches('input, textarea, select')) scheduleRender(); });
 for (const name of ['current', 'saved']) $(name).addEventListener('click', async () => {
   view = name; status('');
   for (const id of ['current', 'saved']) { $(id).classList.toggle('active', id === view); $(id).setAttribute('aria-pressed', String(id === view)); }
@@ -148,43 +214,27 @@ $('connect-engine').addEventListener('click', async () => {
   try {
     if (!await chrome.permissions.request({ permissions: ['nativeMessaging'] })) { status('Local engine permission was not granted.', true); return; }
     engineConnected = (await request('engine-status')).ready;
-    if (!engineConnected) { status('Helper not connected. Follow the installation instructions, then try again.', true); return; }
+    if (!engineConnected) { status('Helper needs setup or an update. Follow the installation instructions, then connect again.', true); return; }
     $('engine-setup').hidden = true;
     $('engine').textContent = 'Local engine connected';
     await findFormats();
   } catch (error) { status(error.message, true); }
 });
-async function renderJobs() {
-  const version = ++jobsVersion;
-  const jobs = await request('engine-jobs');
-  if (version !== jobsVersion) return;
-  const rows = Object.values(jobs).slice(-3).map(job => {
-    const row = element('div', '', 'job');
-    row.append(element('strong', job.title || 'Video'));
-    const text = job.status === 'complete' ? `Saved · ${job.filename?.split(/[\\/]/).pop()}` : job.status === 'failed' ? job.error : `${job.status === 'starting' ? 'Preparing…' : job.status === 'merging' ? 'Combining video and audio…' : `${job.percent ?? '…'}% of current track`}${job.speed && job.status === 'downloading' ? ` · ${sizeLabel(job.speed)}/s` : ''}`;
-    row.append(element('p', text));
-    if (!['complete', 'failed'].includes(job.status)) {
-      const progress = document.createElement('progress'); progress.max = 100; if (job.percent !== null) progress.value = job.percent || 0; progress.setAttribute('aria-label', 'Download progress');
-      const cancel = button('Cancel', 'text-button', () => request('engine-cancel', { jobId: job.jobId }));
-      row.append(progress, cancel);
-    }
-    return row;
-  });
-  $('jobs').replaceChildren(...rows);
-  const latest = Object.values(jobs).at(-1);
-  if (latest?.status === 'complete' && !Object.values(jobs).some(job => !['complete', 'failed'].includes(job.status)) && $('status').textContent.startsWith('Downloading with')) status('Download complete. Saved to your Downloads folder.');
-}
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'session' && changes[`tab:${tabId}`] && view === 'current') scheduleRender();
-  if (area === 'session' && changes.engineJobs) renderJobs().catch(error => status(error.message, true));
+  if (area === 'session' && (changes.engineJobs || changes.browserJobs)) loadTransfers().catch(error => status(error.message, true));
 });
 try {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   tabId = tab?.id;
   $('site').textContent = tab?.url?.startsWith('http') ? new URL(tab.url).hostname : 'Open a website to find videos';
   await render();
-  try { await request('scan'); await render(); } catch { status('Scanning is unavailable here. Try a website tab.', true); }
+  try {
+    const scanned = await request('scan'); await render();
+    if (scanned.items.some(item => !item.height && !item.native && !item.stream)) setTimeout(() => request('scan').catch(() => {}), 1500);
+  } catch { status('Scanning is unavailable here. Try a website tab.', true); }
   engineConnected = (await request('engine-status')).ready;
   if (engineConnected) { $('engine').textContent = 'Local engine connected'; if (/\.(youtube\.com|vimeo\.com)$/.test(`.${new URL(tab.url).hostname}`)) findFormats(); }
-  await renderJobs();
+  await loadTransfers(true);
+  request('probe-details').catch(() => {});
 } catch (error) { status(error.message, true); }

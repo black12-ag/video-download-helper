@@ -3,11 +3,13 @@ export function mediaInfo(value, mime = '') {
   try { url = new URL(value); } catch { return null; }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
   const ext = url.pathname.match(/\.([a-z0-9]+)$/i)?.[1].toLowerCase();
-  if (['ts', 'm4s', 'm4a', 'aac', 'vtt', 'key'].includes(ext)) return null;
+  if (['ts', 'm4s', 'm4f', 'cmfv', 'cmfa', 'cmft', 'm4a', 'aac', 'vtt', 'key'].includes(ext)) return null;
+  if (['bytestart', 'byteend', 'byterange'].some(key => url.searchParams.has(key)) || /^\d+[-,]\d+$/.test(url.searchParams.get('range') || '')) return null;
   mime = mime.split(';')[0].trim().toLowerCase();
+  if (mime === 'text/html' || mime === 'application/json') return null;
   const stream = ['m3u8', 'mpd'].includes(ext) || ['application/vnd.apple.mpegurl', 'application/x-mpegurl', 'application/dash+xml'].includes(mime);
-  const formats = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/ogg': 'ogv', 'video/quicktime': 'mov' };
-  const format = stream ? (ext === 'mpd' || mime.includes('dash') ? 'DASH' : 'HLS') : formats[mime] || (['mp4', 'webm', 'ogv', 'mov', 'm4v'].includes(ext) ? ext : null);
+  const formats = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/ogg': 'ogv', 'video/quicktime': 'mov', 'video/x-matroska': 'mkv', 'video/x-msvideo': 'avi', 'video/x-ms-wmv': 'wmv', 'video/x-flv': 'flv', 'video/3gpp': '3gp' };
+  const format = stream ? (ext === 'mpd' || mime.includes('dash') ? 'DASH' : 'HLS') : formats[mime] || (['mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv', 'avi', 'wmv', 'flv', '3gp'].includes(ext) ? ext : null);
   return format ? { url: url.href, format: format.toUpperCase(), stream } : null;
 }
 
@@ -30,7 +32,7 @@ export function mergeMedia(existing, incoming) {
 }
 
 export function filename(item, customName = '') {
-  let title = (customName.trim() || item.title || 'video').replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '').replace(/\.(mp4|webm|mkv|ogv|mov|m4v)$/i, '') || 'video';
+  let title = (customName.trim() || item.title || 'video').replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '').replace(/\.(mp4|webm|mkv|ogv|mov|m4v|avi|wmv|flv|3gp)$/i, '') || 'video';
   const chars = Array.from(title);
   while (new TextEncoder().encode(chars.join('')).length > 180) chars.pop();
   title = chars.join('').trim();

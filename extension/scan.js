@@ -25,7 +25,7 @@ export function scanPage() {
     });
   }
   for (const link of document.querySelectorAll('a[href]')) {
-    if (/\.(mp4|webm|ogv|mov|m4v|m3u8|mpd)(\?|#|$)/i.test(link.href)) add(link.href, { title: link.getAttribute('download') || link.title || document.title, titleRank: link.getAttribute('download') || link.title ? 2 : 0 });
+    if (/\.(mp4|webm|ogv|mov|m4v|mkv|avi|wmv|flv|3gp|m3u8|mpd)(\?|#|$)/i.test(link.href)) add(link.href, { title: link.getAttribute('download') || link.title || document.title, titleRank: link.getAttribute('download') || link.title ? 2 : 0 });
   }
   for (const entry of performance.getEntriesByType('resource')) add(entry.name);
   return { items: items.slice(-500), blobs, metadata: { title: pageTitle, poster: pagePoster, pageUrl: location.href } };

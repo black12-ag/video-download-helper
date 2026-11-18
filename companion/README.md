@@ -26,7 +26,7 @@ Native messaging was verified end to end in Chrome for Testing on macOS. Comet u
 - Pairs a selected video-only format with compatible audio and uses FFmpeg to combine them. Output is MP4/WebM, or MKV when the discovered audio/video combination requires it. This is not a format converter.
 - Shows actual download speed separately from encoded bitrate. `kb/s bitrate` in the quality list is the media's encoding rate, not transfer throughput. Approximate file sizes are labeled.
 - Streams to disk, with up to four fragment requests for segmented sources. Two jobs may run at once. There is no artificial transfer-rate cap, but the server/connection sets the achievable speed.
-- Shows preparation, current-track progress, combining, completion/errors, and Cancel. Closing the popup does not stop a job; closing the browser or disconnecting the native host cancels its processes.
+- Shows preparation, combined video/audio byte progress, percentage, current transfer rate, estimated remaining time, combining, completion/errors, and Stop directly in the video row. Unknown totals stay indeterminate; approximate totals carry `~`. Closing the popup does not stop a job; closing the browser or disconnecting the native host cancels its processes. Pause/Resume is available for browser-managed files; the local engine supports Stop and Retry, not pause.
 - Saves to your normal `~/Downloads` folder. A short job suffix avoids collisions with existing or concurrent files. Partial files may remain after cancellation/failure for diagnosis; existing user files are not overwritten.
 
 ## Manual setup / other supported host directories

@@ -56,7 +56,7 @@ class CompanionTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             size = struct.unpack('=I', proc.stdout[:4])[0]
             response = json.loads(proc.stdout[4:4 + size])
-            self.assertEqual(response, {'id': 'check', 'data': {'ready': True}})
+            self.assertEqual(response, {'id': 'check', 'data': {'ready': True, 'progressVersion': 2}})
 
     def test_cancel_handles_pending_and_running_processes(self):
         bridge = host.Bridge({}, lambda message: None)
@@ -73,6 +73,21 @@ class CompanionTests(unittest.TestCase):
         bridge.close()
         with self.assertRaisesRegex(ValueError, 'cancelled'):
             bridge.handle({'id': 'after_close', 'op': 'download', 'url': 'https://example.org/a'})
+
+    def test_progress_combines_video_audio_and_estimates_remaining_bytes(self):
+        progress = host.Progress([{'id': 'video', 'size': 1000, 'approximate': True}, {'id': 'audio', 'size': 200, 'approximate': True}])
+        first = progress.update({'downloaded_bytes': 500, 'total_bytes': 1000, 'speed': 100}, 'video')
+        self.assertEqual(first['receivedBytes'], 500)
+        self.assertAlmostEqual(first['eta'], 7)
+        progress.update({'downloaded_bytes': 1000, 'total_bytes': 1000, 'status': 'finished'}, 'video')
+        second = progress.update({'downloaded_bytes': 100, 'total_bytes': 200, 'speed': 50}, 'audio')
+        self.assertEqual(second['receivedBytes'], 1100)
+        self.assertAlmostEqual(second['percent'], 1100 / 1200 * 100)
+        self.assertEqual(second['eta'], 2)
+        self.assertFalse(second['approximate'])
+        final = progress.update({'downloaded_bytes': 200, 'status': 'finished'}, 'audio')
+        self.assertEqual(final['percent'], 100)
+        self.assertEqual(final['status'], 'merging')
 
 
 if __name__ == '__main__': unittest.main()

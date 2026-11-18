@@ -69,12 +69,13 @@ def catalog(info):
             selector += '+' + aid
             if not compatible:
                 ext = 'mkv'
-        size = f.get('filesize') or f.get('filesize_approx') or 0
+        duration = info.get('duration') or 0
+        parts = [dict(id=fid, size=f.get('filesize') or f.get('filesize_approx') or duration * (f.get('tbr') or 0) * 125, approximate=not bool(f.get('filesize')))]
         if chosen_audio:
-            audio_size = chosen_audio.get('filesize') or chosen_audio.get('filesize_approx') or 0
-            size = size + audio_size if size and audio_size else 0
+            parts.append(dict(id=aid, size=chosen_audio.get('filesize') or chosen_audio.get('filesize_approx') or duration * (chosen_audio.get('tbr') or 0) * 125, approximate=not bool(chosen_audio.get('filesize'))))
+        size = sum(part['size'] for part in parts) if all(part['size'] for part in parts) else 0
         result.append(dict(id=fid, selector=selector, ext=ext, width=f.get('width') or 0,
-                           height=f.get('height') or 0, size=size, approximate=True,
+                           height=f.get('height') or 0, size=size, approximate=any(part['approximate'] for part in parts), parts=parts,
                            bitrate=(f.get('tbr') or 0) + ((chosen_audio or {}).get('tbr') or 0),
                            codec=str(f.get('vcodec', '')).split('.')[0]))
     result.sort(key=lambda f: (f['height'], f['width'], f['ext'] == 'mp4', f['bitrate']), reverse=True)
@@ -82,6 +83,35 @@ def catalog(info):
         raise ValueError('No downloadable video with audio was found')
     return dict(title=info.get('title') or 'Video', poster=info.get('thumbnail') or '',
                 duration=info.get('duration') or 0, formats=result[:100])
+
+
+class Progress:
+    """Combine video/audio byte counts so the row does not reset for each track."""
+    def __init__(self, parts):
+        self.totals = {part['id']: part['size'] for part in parts}
+        self.exact = {part['id'] for part in parts if not part.get('approximate')}
+        self.received, self.finished = {}, set()
+
+    def update(self, data, track):
+        if track not in self.totals:
+            track = next((key for key in self.totals if '.f' + key + '.' in data.get('filename', '')), None) or next((key for key in self.totals if key not in self.finished), next(iter(self.totals)))
+        self.received[track] = max(self.received.get(track, 0), data.get('downloaded_bytes') or 0)
+        if data.get('total_bytes'):
+            self.totals[track] = data['total_bytes']
+            self.exact.add(track)
+        elif data.get('total_bytes_estimate'):
+            self.totals[track] = data['total_bytes_estimate']
+        if data.get('status') == 'finished':
+            self.finished.add(track)
+            self.totals[track] = self.received[track]
+            self.exact.add(track)
+        received = sum(self.received.values())
+        total = max(received, sum(self.totals.values())) if all(self.totals.values()) else 0
+        speed = data.get('speed') or 0
+        return dict(receivedBytes=received, totalBytes=total, approximate=len(self.exact) < len(self.totals),
+                    percent=min(100, received / total * 100) if total else None, speed=speed,
+                    eta=max(0, (total - received) / speed) if speed and total else None,
+                    status='merging' if len(self.finished) == len(self.totals) and len(self.totals) > 1 else 'downloading')
 
 
 class Bridge:
@@ -133,7 +163,7 @@ class Bridge:
             output = str(folder / (stem + ' [' + job[:8] + '].%(ext)s'))
             args = self.command() + ['--ffmpeg-location', self.config['ffmpeg'], '-f', chosen['selector'],
                     '--merge-output-format', chosen['ext'], '--concurrent-fragments', '4', '--no-overwrites',
-                    '--newline', '--progress', '--progress-template', 'download:VDH:%(progress)j',
+                    '--newline', '--progress', '--progress-template', 'download:VDH:{"progress":%(progress)j,"formatId":%(info.format_id)j}',
                     '--print', 'after_move:VDH_FILE:%(filepath)j', '--no-simulate', '-o', output, '--', url]
             with self.lock:
                 if self.closed or self.jobs.get(job) is False:
@@ -142,14 +172,14 @@ class Bridge:
                 self.jobs[job] = proc
             last = 'Download failed'
             last_emit = 0
+            progress = Progress(chosen['parts'])
             for line in proc.stdout:
                 if line.startswith('VDH:'):
-                    data = json.loads(line[4:])
-                    if time.monotonic() - last_emit > .5:
-                        total = data.get('total_bytes') or data.get('total_bytes_estimate') or 0
-                        self.emit(dict(event='progress', jobId=job, status='downloading',
-                                       percent=min(100, round(data.get('downloaded_bytes', 0) / total * 100, 1)) if total else None,
-                                       speed=data.get('speed') or 0, eta=data.get('eta')))
+                    packet = json.loads(line[4:])
+                    data = packet['progress']
+                    snapshot = progress.update(data, str(packet.get('formatId', '')))
+                    if time.monotonic() - last_emit > .5 or data.get('status') == 'finished':
+                        self.emit(dict(event='progress', jobId=job, **snapshot))
                         last_emit = time.monotonic()
                 elif line.startswith('VDH_FILE:'):
                     destination = json.loads(line[len('VDH_FILE:'):])
@@ -162,7 +192,9 @@ class Bridge:
                 raise ValueError(last if code > 0 else 'Download cancelled')
             if 'destination' not in locals() or not Path(destination).is_file():
                 raise ValueError('Download finished without an output file')
-            self.emit(dict(event='progress', jobId=job, status='complete', percent=100, filename=destination))
+            self.emit(dict(event='progress', jobId=job, status='complete', percent=100, filename=destination,
+                           fileSize=Path(destination).stat().st_size, receivedBytes=sum(progress.received.values()),
+                           totalBytes=sum(progress.received.values()), approximate=False, speed=0, eta=None))
             return {'filename': destination}
         finally:
             if proc:
@@ -182,7 +214,7 @@ class Bridge:
             raise ValueError('Invalid request')
         op = request.get('op')
         if op == 'ping':
-            return {'ready': True}
+            return {'ready': True, 'progressVersion': 2}
         if op == 'inspect':
             return self.inspect(valid_url(request.get('url')))
         if op == 'download':

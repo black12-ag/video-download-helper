@@ -1,4 +1,4 @@
-"""Build a dependency-free, extension-only release archive."""
+"""Build the extension archive with optional local-helper source."""
 from pathlib import Path
 import json
 import zipfile
@@ -20,5 +20,5 @@ with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
 with zipfile.ZipFile(output) as archive:
     assert archive.testzip() is None
     assert json.loads(archive.read("manifest.json"))["version"] == manifest["version"]
-    assert all(name in archive.namelist() for name in ["background.js", "popup.html", "popup.js", "media.js", "scan.js", "engine.js", "companion/host.py"])
+    assert all(name in archive.namelist() for name in ["background.js", "popup.html", "popup.js", "media.js", "scan.js", "engine.js", "downloads.js", "transfers.js", "companion/host.py"])
 print(output)

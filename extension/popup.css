@@ -1,4 +1,5 @@
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; width: 500px; background: #f4f5f7; color: #20252d; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
@@ -7,6 +8,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 header { padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #e1e4e9; }
 .brand { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .mark { width: 32px; height: 34px; display: grid; place-items: center; background: #eaf3ff; color: #0674d8; font-size: 25px; border-radius: 8px; }
+.mark { display: block; background: transparent; object-fit: contain; }
 h1 { margin: 0; font-size: 15px; line-height: 1.3; font-weight: 650; letter-spacing: -.3px; }
 #site { margin: 3px 0 0; font-size: 11px; color: #667080; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-button { border: 1px solid #dce1e7; background: #fff; color: #596575; border-radius: 6px; width: 30px; height: 30px; font-size: 21px; }
@@ -80,3 +82,25 @@ body { display: flex; flex-direction: column; max-height: 600px; }
 header, footer { flex-shrink: 0; }
 main { min-height: 0; overflow-y: auto; }
 #jobs { max-height: 130px; overflow-y: auto; }
+.transfer { margin-top: 12px; }
+.transfer-line { display: flex; align-items: center; gap: 8px; }
+.transfer-meter { position: relative; flex: 1; height: 30px; border: 1px solid #68b7f0; border-radius: 7px; overflow: hidden; background: #f1f9ff; font-size: 11px; font-variant-numeric: tabular-nums; }
+.transfer-meter progress { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 100%; margin: 0; border: 0; background: transparent; }
+.transfer-meter progress::-webkit-progress-bar { background: #f1f9ff; }
+.transfer-meter progress::-webkit-progress-value { background: #b8e0fd; }
+.transfer-meter progress::-moz-progress-bar { background: #b8e0fd; }
+.transfer-percent, .transfer-speed { position: absolute; top: 50%; transform: translateY(-50%); color: #245572; pointer-events: none; }
+.transfer-percent { left: 9px; }
+.transfer-speed { right: 9px; }
+.transfer-detail { margin: 6px 0 0; color: #617082; font-size: 10px; font-variant-numeric: tabular-nums; line-height: 1.5; overflow-wrap: anywhere; }
+.stop { flex-shrink: 0; border: 0; background: #d72d36; color: white; border-radius: 17px; padding: 7px 13px; font-size: 12px; font-weight: 600; }
+.stop:hover { background: #b51d28; }
+.pause { flex-shrink: 0; border: 1px solid #cbd8e5; background: #fff; color: #28608d; border-radius: 17px; padding: 6px 10px; font-size: 11px; }
+.pause:hover { background: #eef6ff; }
+.transfer[data-state="complete"] .transfer-meter { border-color: #a6ceba; }
+.transfer[data-state="complete"] progress::-webkit-progress-value { background: #d9efdf; }
+.transfer[data-state="failed"] .transfer-meter { border-color: #dea5a5; }
+.transfer[data-state="cancelled"] .transfer-meter { border-color: #c5cbd3; }
+.filename:disabled { opacity: 1; -webkit-text-fill-color: #20252d; }
+.job .transfer { margin-top: 7px; }
+.job .transfer progress { width: 100%; height: 100%; margin: 0; }

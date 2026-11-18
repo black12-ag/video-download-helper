@@ -6,6 +6,10 @@ While enabled, it observes HTTP(S) response URLs, media type and size, associate
 
 When you explicitly save a video, its link, title, originating page and detected metadata are stored locally. Links may contain private access tokens. Saved videos are not synced by this extension. Remove a saved item from the Saved videos tab, or uninstall the extension to delete its storage. Your downloaded files remain on disk after uninstalling.
 
+The popup tracks only browser download IDs started by this extension, plus its optional local-engine jobs. While the popup is open and a transfer is active, it samples those browser IDs for bytes, rate, size, time estimates and controls. Transfer records use browser session storage; ongoing jobs and a bounded recent completed list are kept so reopening the popup can restore progress. It does not enumerate unrelated download history for the progress view. Browser Pause/Resume/Stop use the browser's own download API and never delete completed files.
+
+For up to six direct-file candidates with unknown sizes, the popup may request HTTP HEAD metadata from the original media URL, without cookies and with a short timeout. Some servers refuse HEAD or omit sizes; those fields stay unknown until the transfer provides them. This does not fetch the video body or fabricate a resolution, bitrate or ETA.
+
 The popup may load a video's poster image from its original HTTP(S) URL when the website provides one. This can contact the image's original server, using the browser's ordinary image-request behavior. It does not load autoplay video previews. Poster URLs, video labels, captions and duration may be stored with the detected/saved video. An edited saved filename stays in local storage with that video.
 
 ## Optional local engine

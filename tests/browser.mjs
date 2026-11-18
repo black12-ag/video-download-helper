@@ -10,9 +10,22 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const fixture = await readFile(process.env.VIDEO_FIXTURE || '/tmp/open-video-fixture.mp4');
 const lowFixture = execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', process.env.VIDEO_FIXTURE || '/tmp/open-video-fixture.mp4', '-vf', 'scale=320:180', '-an', '-c:v', 'libx264', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov', 'pipe:1']);
 const webmFixture = execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', process.env.VIDEO_FIXTURE || '/tmp/open-video-fixture.mp4', '-vf', 'scale=320:180', '-an', '-c:v', 'libvpx', '-b:v', '200k', '-f', 'webm', 'pipe:1']);
+const slowFixture = execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-stream_loop', '5', '-i', process.env.VIDEO_FIXTURE || '/tmp/open-video-fixture.mp4', '-c', 'copy', '-t', '30', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov', 'pipe:1'], { maxBuffer: 20000000 });
 const hash = buffer => createHash('sha256').update(buffer).digest('hex');
 const server = http.createServer((req, res) => {
   const path = req.url.split('?')[0];
+  if (path === '/slow.mp4' || path === '/unknown.mp4') {
+    res.writeHead(200, { 'Content-Type': 'video/mp4', ...(path === '/slow.mp4' ? { 'Content-Length': slowFixture.length } : {}) });
+    if (req.method === 'HEAD') { res.end(); return; }
+    res.flushHeaders();
+    let offset = 0;
+    const timer = setInterval(() => {
+      if (res.destroyed) { clearInterval(timer); return; }
+      res.write(slowFixture.subarray(offset, offset + 131072)); offset += 131072;
+      if (offset >= slowFixture.length) { clearInterval(timer); res.end(); }
+    }, 200);
+    res.on('close', () => clearInterval(timer)); return;
+  }
   if (path === '/poster.svg') { res.writeHead(200, { 'Content-Type': 'image/svg+xml' }); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#3576a4"/><path d="M0 180L100 60 180 130 250 40 320 180" fill="#d1e2d6"/></svg>'); return; }
   if (path === '/forbidden.mp4') { res.writeHead(403); res.end('Denied'); return; }
   if (path.endsWith('.mp4') || path.endsWith('.webm') || path === '/opaque') {
@@ -24,6 +37,8 @@ const server = http.createServer((req, res) => {
     '/': '<title>Fixture movie</title><video title="Mountain trip" poster="/poster.svg" controls preload="auto"><source src="/mountain.mp4" type="video/mp4"><source src="/mountain-low.mp4" type="video/mp4" data-quality="180p"><source src="/mountain.webm" type="video/webm" data-quality="180p"></video><video controls preload="auto" src="/movie.mp4"></video><video controls preload="auto" src="/low.mp4"></video><a href="/movie.mp4">Duplicate</a><iframe src="http://localhost:PORT/frame"></iframe><script>fetch("/opaque");fetch("/master.m3u8");</script>',
     '/frame': '<title>Embedded video</title><video src="/embedded.mp4" preload="auto"></video>',
     '/empty': '<title>Empty page</title><h1>No videos</h1>',
+    '/slow-page': '<title>Mountain trip</title><a download="Mountain trip.mp4" href="/slow.mp4">Download video</a>',
+    '/unknown-page': '<title>Unknown length</title><a href="/unknown.mp4">Download video</a>',
     '/blob': '<title>Blob player</title><video></video><script>document.querySelector("video").src=URL.createObjectURL(new Blob(["test"],{type:"video/mp4"}));</script>',
     '/unsafe': '<title>&lt;img src=x onerror=alert(1)&gt;</title><a href="/forbidden.mp4">Forbidden video</a>',
   };
@@ -56,7 +71,7 @@ try {
   const started = performance.now();
   await page.goto(origin, { waitUntil: 'networkidle' });
   const tabId = await worker.evaluate(async origin => (await chrome.tabs.query({})).find(t => t.url === `${origin}/`).id, origin);
-  const ui = await context.newPage();
+  let ui = await context.newPage();
   // Exercise native filename handling; automation download overrides skip it.
   const downloadSession = await context.newCDPSession(ui);
   await downloadSession.send('Browser.setDownloadBehavior', { behavior: 'default', eventsEnabled: true });
@@ -102,7 +117,7 @@ try {
   assert.equal(await mountain.getByLabel('Filename').inputValue(), 'ጉዞ 2026.mp4', 'auto-refresh preserves edits');
   await mountain.getByLabel('Video quality').selectOption(`${origin}/mountain-low.mp4`);
   await mountain.getByRole('button', { name: 'Download', exact: true }).click();
-  await ui.getByRole('status').filter({ hasText: 'Download started' }).waitFor();
+  await ui.getByRole('group', { name: 'Download status', exact: true }).first().waitFor();
   const qualityId = await ui.evaluate(async url => (await chrome.downloads.search({ url }))[0].id, `${origin}/mountain-low.mp4`);
   const qualityDownload = await waitDownload(qualityId);
   assert.equal(qualityDownload.state, 'complete');
@@ -111,7 +126,7 @@ try {
   await mountain.getByLabel('Video quality').selectOption(`${origin}/mountain.webm`);
   assert.equal(await mountain.getByLabel('Filename').inputValue(), 'ጉዞ 2026.webm');
   await mountain.getByRole('button', { name: 'Download', exact: true }).click();
-  await ui.getByRole('status').filter({ hasText: 'Download started' }).waitFor();
+  await ui.getByRole('group', { name: 'Download status', exact: true }).first().waitFor();
   const webmId = await ui.evaluate(async url => (await chrome.downloads.search({ url }))[0].id, `${origin}/mountain.webm`);
   const webmDownload = await waitDownload(webmId);
   assert.equal(webmDownload.state, 'complete');
@@ -129,7 +144,7 @@ try {
   assert.equal((await message('saved'))[0].customName, 'My holiday.mp4');
   const before = performance.now();
   await ui.getByRole('button', { name: 'Download', exact: true }).click();
-  await ui.getByRole('status').filter({ hasText: 'Download started' }).waitFor();
+  await ui.getByRole('group', { name: 'Download status', exact: true }).first().waitFor();
   const downloadId = await ui.evaluate(async url => (await chrome.downloads.search({ url }))[0].id, item.url);
   const result = await waitDownload(downloadId);
   assert.equal(result.state, 'complete');
@@ -159,6 +174,54 @@ try {
   await downloadsPage.waitForURL('chrome://downloads/');
   await downloadsPage.close();
   console.log('PASS setup/close, dismiss stays hidden, native browser Downloads button');
+  await page.goto(`${origin}/slow-page`);
+  await message('scan'); await message('probe-details');
+  assert.equal((await message('list')).items.find(item => item.url.endsWith('/slow.mp4')).size, slowFixture.length, 'HEAD resolves size without downloading the video');
+  let slowCard = ui.getByRole('article', { name: 'Mountain trip.mp4', exact: true });
+  await slowCard.getByRole('button', { name: 'Download', exact: true }).click();
+  const waitJob = async predicate => {
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      const jobs = await message('download-jobs', { refresh: true });
+      const job = [...jobs].reverse().find(predicate);
+      if (job) return job;
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    throw new Error('Expected transfer state did not appear');
+  };
+  const running = await waitJob(job => job.sourceUrl === `${origin}/slow.mp4` && job.receivedBytes > 131072 && job.percent > 0 && job.percent < 100 && job.speed > 0 && Number.isFinite(job.eta));
+  assert.equal(running.totalBytes, slowFixture.length);
+  await slowCard.getByRole('button', { name: 'Stop', exact: true }).waitFor();
+  assert.equal(await ui.evaluate(() => document.activeElement?.textContent), 'Stop', 'keyboard focus reaches the active stop control');
+  assert.ok(await slowCard.locator('.actions').isHidden(), 'download controls switch to progress');
+  assert.ok((await slowCard.locator('.transfer-detail').innerText()).includes('left'));
+  await slowCard.getByRole('button', { name: 'Pause', exact: true }).click();
+  await waitJob(job => job.jobId === running.jobId && job.status === 'paused');
+  await slowCard.getByRole('button', { name: 'Resume', exact: true }).click();
+  await waitJob(job => job.jobId === running.jobId && job.status === 'downloading');
+  await ui.locator('body').screenshot({ path: 'test-results/progress-popup.png' });
+  await ui.close(); ui = await context.newPage(); await page.bringToFront(); await ui.goto(`chrome-extension://${id}/popup.html`);
+  console.log('Popup reopened during slow transfer');
+  slowCard = ui.getByRole('article', { name: 'Mountain trip.mp4', exact: true });
+  await slowCard.getByRole('button', { name: 'Stop', exact: true }).waitFor();
+  await slowCard.getByRole('button', { name: 'Stop', exact: true }).click();
+  const stopped = await waitJob(job => job.jobId === running.jobId && job.status === 'cancelled');
+  assert.equal((await ui.evaluate(async id => (await chrome.downloads.search({ id }))[0], stopped.downloadId)).error, 'USER_CANCELED');
+  await slowCard.getByRole('button', { name: 'Retry', exact: true }).waitFor();
+  await slowCard.getByRole('button', { name: 'Retry', exact: true }).click();
+  const completeJob = await waitJob(job => job.sourceUrl === `${origin}/slow.mp4` && job.jobId !== running.jobId && job.status === 'complete');
+  assert.equal(hash(await readFile(completeJob.filename)), hash(slowFixture));
+  assert.equal(completeJob.percent, 100);
+  await slowCard.getByRole('button', { name: 'Download again', exact: true }).waitFor();
+  await page.goto(`${origin}/unknown-page`); await message('scan');
+  const unknownCard = ui.getByRole('article', { name: 'Unknown length', exact: true });
+  await unknownCard.getByRole('button', { name: 'Download', exact: true }).click();
+  const unknown = await waitJob(job => job.sourceUrl === `${origin}/unknown.mp4` && job.receivedBytes > 0);
+  assert.equal(unknown.percent, null); assert.equal(unknown.totalBytes, 0);
+  assert.equal(await unknownCard.locator('.transfer progress').getAttribute('value'), null);
+  await unknownCard.getByRole('button', { name: 'Stop', exact: true }).click();
+  await waitJob(job => job.jobId === unknown.jobId && job.status === 'cancelled');
+  console.log('PASS inline byte/percent/speed/ETA, HEAD size, pause/resume, popup reopen, real Stop, retry/complete hash, unknown-total indeterminate state');
   await page.goto(`${origin}/empty`);
   assert.equal((await message('scan')).items.length, 0, 'navigation clears old discoveries');
   await page.goto(`${origin}/blob`);
@@ -168,7 +231,7 @@ try {
   const failed = await message('download', { url: unsafe.url });
   assert.equal((await waitDownload(failed)).state, 'interrupted');
   await ui.getByRole('article', { name: '<img src=x onerror=alert(1)>', exact: true }).waitFor();
-  assert.equal(await ui.locator('img').count(), 0);
+  assert.equal(await ui.locator('#videos img').count(), 0);
   console.log('PASS saved-list dedup/remove, rejected unknown URL, unsupported stream, navigation reset, blob notice, HTTP 403 failure');
   assert.deepEqual(errors, []);
   // Public smoke checks establish discovery only, not support for every site.
@@ -192,6 +255,14 @@ try {
       console.log(`PASS public native download: ${new URL(media.url).hostname}, ${bytes.length} bytes, ${seconds.toFixed(2)}s, ${(bytes.length / 1048576 / seconds).toFixed(2)} MiB/s`);
     } catch (error) { console.log(`UNVERIFIED public page ${url}: ${error.message.split('\n')[0]}`); }
   }
+} catch (error) {
+  const last = context?.pages().at(-1);
+  if (last) {
+    await mkdir('test-results', { recursive: true });
+    await last.screenshot({ path: 'test-results/browser-failure.png' }).catch(() => {});
+    console.log('Failure UI:', (await last.locator('body').innerText().catch(() => '')).slice(0, 3000));
+  }
+  throw error;
 } finally {
   await context?.close(); server.close(); await rm(profile, { recursive: true, force: true });
 }
