@@ -1,7 +1,7 @@
 {
   "name": "video-download-helper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test tests/*.test.js", "check": "node --check extension/background.js && node --check extension/popup.js && node --check extension/scan.js", "package": "python3 scripts/package.py" }
+  "scripts": { "test": "node --test tests/*.test.js", "test:companion": "python3 -m unittest discover -s tests -p 'test_companion.py' -v", "check": "node --check extension/background.js && node --check extension/popup.js && node --check extension/scan.js && node --check extension/engine.js", "package": "python3 scripts/package.py" }
 }

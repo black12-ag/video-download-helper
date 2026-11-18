@@ -12,4 +12,5 @@ jobs:
           node-version: 22
       - run: npm test
       - run: npm run check
+      - run: npm run test:companion
       - run: python3 scripts/package.py

@@ -147,6 +147,18 @@ try {
   assert.ok(await ui.evaluate(() => document.body.getBoundingClientRect().height <= 600), 'popup fits browser height');
   await mkdir('test-results', { recursive: true });
   await ui.locator('body').screenshot({ path: 'test-results/popup.png' });
+  await ui.getByRole('button', { name: 'Find all qualities', exact: true }).click();
+  await ui.getByRole('region', { name: 'Local engine setup' }).waitFor();
+  assert.ok((await ui.locator('#extension-id').innerText()).includes(id));
+  await ui.getByRole('button', { name: 'Close', exact: true }).click();
+  await ui.getByRole('article', { name: 'Mountain trip', exact: true }).getByRole('button', { name: 'Dismiss video' }).click();
+  assert.equal((await message('scan')).items.some(item => item.title === 'Mountain trip'), false, 'dismissed sources stay hidden across scans');
+  const downloadsTab = context.waitForEvent('page');
+  await ui.getByRole('button', { name: 'Browser downloads ↗' }).click();
+  const downloadsPage = await downloadsTab;
+  await downloadsPage.waitForURL('chrome://downloads/');
+  await downloadsPage.close();
+  console.log('PASS setup/close, dismiss stays hidden, native browser Downloads button');
   await page.goto(`${origin}/empty`);
   assert.equal((await message('scan')).items.length, 0, 'navigation clears old discoveries');
   await page.goto(`${origin}/blob`);

@@ -27,3 +27,20 @@ Editing a filename survived a concurrent scan. Selecting another source preserve
 The harness restores native download behavior and sets a disposable browser download directory. Playwright's automation download override otherwise substitutes UUID artifact names (or bypasses extension filename handling), which cannot prove real user-visible naming. Personal browser settings were not changed.
 
 Latest observed browser timings, including server/cache variation: initial local discovery with page load 873 ms; exact 1,410,297-byte local download 39 ms; public W3Schools MP4 0.53 s, MDN MP4 0.17 s, W3C MP4 2.70 s. All public MP4 headers and total byte counts were checked. These are observations, not a comparison or guaranteed speed increase.
+
+## v0.3.0 real formats and stream downloads
+
+REA inspected the installed reference's selected artifacts and recorded runtime observations on YouTube, MDN and W3Schools; see [reference-audit.md](reference-audit.md) for evidence IDs, version differences and limits. The reference's Chrome-store build blocked its YouTube download despite listing formats; its W3Schools download also showed a possibly-short-file warning. These are reported as such, without claiming general reference failure or a fair speed benchmark.
+
+The independent implementation passed a real native-messaging handshake in an isolated Chrome for Testing profile. The test copy granted the optional permission at installation time; production requires the user's Connect local engine permission prompt. The native host was registered only inside that temporary browser profile, and its output folder was temporary. Personal Comet/Orca profiles and permissions were not modified.
+
+Current yt-dlp 2026.10.26 with EJS 0.8.0, Python 3.13, Node and installed FFmpeg discovered 33 usable formats for the exact song `bg1sT4ILG0w`. Clicking the actual extension Download button completed:
+
+- MP4: 256×128, full 305 seconds, 7,225,413 bytes.
+- WebM: 1280×522, full 305 seconds, 30,478,504 bytes.
+
+FFprobe independently confirmed both audio and video tracks and the selected dimensions in each completed file. A generated local HLS master/media playlist also downloaded and produced an output containing both video and audio. The older installed yt-dlp 2026.03.17 could discover formats but its download returned 403; upgrading only a separate project environment resolved that test failure.
+
+Seven JavaScript tests and eight Python validation/protocol/cancellation-state tests pass, along with JavaScript/Python/shell syntax and ZIP verification. The existing real browser suite passed direct MP4/WebM quality selection, renamed Unicode filenames and source hashes, saved names, frame/MIME detection, untrusted text, navigation and HTTP errors. Public direct-file downloads passed W3Schools, MDN and W3C again.
+
+Remaining limits: personal-browser engine installation/permission must be completed and verified by its user; native-messaging support differs between browsers. No all-websites or all-formats download claim, DRM, live recording, cookie export or guaranteed transfer speed. Cancellation validation covers pending/running state and process-group termination code; an interrupted real YouTube download was not used as a destructive cancellation test.

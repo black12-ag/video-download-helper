@@ -5,11 +5,13 @@
   <header><div class="brand"><span class="mark" aria-hidden="true">↓</span><div><h1>Video Download Helper</h1><p id="site">Loading…</p></div></div><button id="scan" class="icon-button" aria-label="Scan page" title="Scan page">↻</button></header>
   <main>
     <nav aria-label="Video lists"><button id="current" class="tab active" aria-pressed="true">On this page <span id="count">0</span></button><button id="saved" class="tab" aria-pressed="false">Saved videos</button></nav>
-    <div class="toolbar"><p id="summary">Looking for videos…</p><span class="auto"><i aria-hidden="true"></i>Auto-detect on</span></div>
+    <div class="toolbar"><p id="summary">Looking for videos…</p><button id="formats" class="text-button">Find all qualities</button></div>
     <p id="status" role="status" aria-live="polite"></p>
+    <section id="engine-setup" hidden aria-label="Local engine setup"><strong>Free local download engine</strong><p>Combines video and audio with yt-dlp and FFmpeg. Direct video files work without it.</p><p>Install the helper using the instructions below, then connect.</p><code id="extension-id"></code><a id="setup-guide" href="https://github.com/black12-ag/video-download-helper/blob/main/companion/README.md" target="_blank" rel="noreferrer">Installation instructions ↗</a><button id="connect-engine" class="primary">Connect local engine</button><button id="close-setup" class="text-button">Close</button></section>
+    <section id="jobs" aria-label="Local downloads"></section>
     <section id="videos" aria-label="Detected videos"></section>
     <aside id="hint">Play a video to detect it. Use ↻ if it hasn’t appeared.</aside>
   </main>
-  <footer><span>Free · Open source · On your device</span><button id="downloads">Downloads ↗</button></footer>
+  <footer><button id="engine" class="text-button">Local engine</button><span>Free · Open source</span><button id="downloads">Browser downloads ↗</button></footer>
   <script type="module" src="popup.js"></script>
 </body></html>

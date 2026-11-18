@@ -7,6 +7,7 @@ export function scanPage() {
     if (url) items.push({ url, title: document.title, pageUrl: location.href, ...extra });
   };
   const pageTitle = document.querySelector('meta[property="og:title"]')?.content || document.title;
+  const pagePoster = document.querySelector('meta[property="og:image"]')?.content || '';
   for (const video of document.querySelectorAll('video')) {
     const sources = [...video.querySelectorAll('source')];
     const urls = [...new Set([video.currentSrc, video.src, ...sources.map(source => source.src)].filter(Boolean))].sort();
@@ -14,7 +15,7 @@ export function scanPage() {
     const extra = {
       title: ownTitle || pageTitle, titleRank: ownTitle ? 3 : pageTitle !== document.title ? 1 : 0,
       width: video.videoWidth, height: video.videoHeight,
-      groupKey: JSON.stringify([location.href, urls]), poster: video.poster,
+      groupKey: JSON.stringify([location.href, urls]), poster: video.poster || pagePoster,
       duration: Number.isFinite(video.duration) ? video.duration : 0,
     };
     add(video.currentSrc || video.src, extra);
@@ -27,5 +28,5 @@ export function scanPage() {
     if (/\.(mp4|webm|ogv|mov|m4v|m3u8|mpd)(\?|#|$)/i.test(link.href)) add(link.href, { title: link.getAttribute('download') || link.title || document.title, titleRank: link.getAttribute('download') || link.title ? 2 : 0 });
   }
   for (const entry of performance.getEntriesByType('resource')) add(entry.name);
-  return { items: items.slice(-500), blobs };
+  return { items: items.slice(-500), blobs, metadata: { title: pageTitle, poster: pagePoster, pageUrl: location.href } };
 }

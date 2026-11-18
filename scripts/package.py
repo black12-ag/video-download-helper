@@ -14,8 +14,11 @@ with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.write(file, file.relative_to(source))
     for name in ["LICENSE", "PRIVACY.md", "README.md", "docs/popup.png"]:
         archive.write(root / name, name)
+    for file in sorted((root / 'companion').iterdir()):
+        if file.is_file() and file.suffix in ['.py', '.sh', '.md']:
+            archive.write(file, file.relative_to(root))
 with zipfile.ZipFile(output) as archive:
     assert archive.testzip() is None
     assert json.loads(archive.read("manifest.json"))["version"] == manifest["version"]
-    assert all(name in archive.namelist() for name in ["background.js", "popup.html", "popup.js", "media.js", "scan.js"])
+    assert all(name in archive.namelist() for name in ["background.js", "popup.html", "popup.js", "media.js", "scan.js", "engine.js", "companion/host.py"])
 print(output)

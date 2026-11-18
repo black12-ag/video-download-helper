@@ -1,7 +1,7 @@
 import { filename, groupMedia } from './media.js';
 
 const $ = id => document.getElementById(id);
-let tabId, view = 'current', renderVersion = 0, refreshTimer;
+let tabId, view = 'current', renderVersion = 0, jobsVersion = 0, refreshTimer, engineConnected = false;
 const selections = new Map(), names = new Map();
 async function request(type, extra = {}) {
   const result = await chrome.runtime.sendMessage({ type, tabId, ...extra });
@@ -25,12 +25,24 @@ function button(text, className, action) {
   return node;
 }
 const sizeLabel = bytes => bytes ? bytes < 1048576 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB` : 'Size unknown';
-const qualityLabel = item => `${item.format} · ${item.height ? `${item.height}p` : item.qualityLabel || 'Original'} · ${item.stream ? 'Needs merging' : sizeLabel(item.size)}`;
+const qualityLabel = item => `${item.format} · ${item.width && item.height ? `${item.width}×${item.height}` : item.qualityLabel || 'Original'}${item.codec ? ` · ${item.codec}` : ''} · ${item.bitrate ? `${Math.round(item.bitrate)} kb/s bitrate` : item.stream ? 'Stream' : `${item.approximate && item.size ? '~' : ''}${sizeLabel(item.size)}`}`;
+function showSetup() { $('engine-setup').hidden = false; $('extension-id').textContent = `Extension ID: ${chrome.runtime.id}`; }
+async function findFormats(url) {
+  if (!engineConnected) { showSetup(); return; }
+  $('formats').disabled = true; status('Finding formats and audio…');
+  try { await request('engine-inspect', url ? { url } : {}); await render(); status('Formats ready. Choose a quality and download.'); }
+  catch (error) { status(error.message, true); }
+  finally { $('formats').disabled = false; }
+}
 function videoCard(group) {
   const { key, items } = group;
   let item = items.find(item => item.url === selections.get(key)) || items[0];
   const card = element('article', '', 'video');
   card.setAttribute('aria-label', item.title || 'Video');
+  if (view === 'current') {
+    const dismiss = button('×', 'dismiss', async () => { await request('hide', { urls: items.map(item => item.url) }); await render(); });
+    dismiss.setAttribute('aria-label', 'Dismiss video'); dismiss.title = 'Hide until the next page load'; card.append(dismiss);
+  }
   const head = element('div', '', 'video-head');
   const preview = element('div', '▶', 'preview');
   preview.setAttribute('aria-hidden', 'true');
@@ -49,11 +61,11 @@ function videoCard(group) {
   }
   const info = element('div', '', 'info');
   const nameRow = element('div', '', 'name-row');
-  const name = document.createElement('input');
-  name.type = 'text'; name.className = 'filename'; name.maxLength = 180; name.setAttribute('aria-label', 'Filename');
+  const name = document.createElement('textarea');
+  name.rows = 2; name.className = 'filename'; name.maxLength = 180; name.setAttribute('aria-label', 'Filename');
   name.value = names.get(key) ?? item.customName ?? filename(item); name.title = name.value;
   name.addEventListener('input', () => { names.set(key, name.value); name.title = name.value; });
-  name.addEventListener('keydown', event => { if (event.key === 'Enter') name.blur(); });
+  name.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); name.blur(); } });
   name.addEventListener('change', async () => {
     name.value = filename(item, name.value); name.title = name.value; names.set(key, name.value);
     if (view === 'saved') {
@@ -71,12 +83,13 @@ function videoCard(group) {
   for (const source of items) { const option = element('option', qualityLabel(source)); option.value = source.url; quality.append(option); }
   quality.value = item.url;
   const download = button('Download', 'primary', async () => {
+    if (item.stream) { await findFormats(item.url); return; }
     status('Starting download…');
-    await request('download', { url: item.url, name: name.value });
-    status('Download started. Open Downloads for progress.');
+    const result = await request('download', { url: item.url, name: name.value });
+    status(typeof result === 'object' ? 'Downloading with the local engine. Progress is shown below.' : 'Download started. Open Browser downloads for progress.');
   });
-  const note = element('p', 'This stream needs merging, which is not supported yet.', 'stream-note');
-  const update = () => { download.disabled = Boolean(item.stream); note.hidden = !item.stream; };
+  const note = element('p', 'This video has separate streams. Find its qualities with the free local engine.', 'stream-note');
+  const update = () => { download.textContent = item.stream ? 'Find qualities' : 'Download'; note.hidden = !item.stream; };
   quality.addEventListener('change', () => {
     item = items.find(item => item.url === quality.value);
     selections.set(key, item.url);
@@ -92,7 +105,7 @@ function videoCard(group) {
   actions.append(quality, download, save); card.append(actions, note); update();
   return card;
 }
-function editing() { return ['INPUT', 'SELECT'].includes(document.activeElement?.tagName); }
+function editing() { return ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName); }
 async function render() {
   if (editing()) return;
   const version = ++renderVersion;
@@ -108,7 +121,7 @@ async function render() {
     nodes.push(empty);
   }
   $('videos').replaceChildren(...nodes);
-  $('hint').textContent = view === 'saved' ? 'Saved links may expire. Download videos you want to keep.' : record.blobs ? 'This player uses temporary video URLs. Some streams cannot be downloaded here.' : 'Edit a filename to rename. Only available source qualities are shown.';
+  $('hint').textContent = view === 'saved' ? 'Saved links may expire. Download videos you want to keep.' : record.engineUrl ? 'Choose a format. The local engine combines video and audio automatically.' : record.blobs ? 'This player uses separate streams. Use Find all qualities with the local engine.' : 'Edit a filename to rename. Only available source qualities are shown.';
 }
 function scheduleRender() {
   clearTimeout(refreshTimer);
@@ -128,8 +141,42 @@ $('scan').addEventListener('click', async () => {
   finally { $('scan').disabled = false; }
 });
 $('downloads').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://downloads/' }));
+$('engine').addEventListener('click', showSetup);
+$('close-setup').addEventListener('click', () => { $('engine-setup').hidden = true; });
+$('formats').addEventListener('click', () => findFormats());
+$('connect-engine').addEventListener('click', async () => {
+  try {
+    if (!await chrome.permissions.request({ permissions: ['nativeMessaging'] })) { status('Local engine permission was not granted.', true); return; }
+    engineConnected = (await request('engine-status')).ready;
+    if (!engineConnected) { status('Helper not connected. Follow the installation instructions, then try again.', true); return; }
+    $('engine-setup').hidden = true;
+    $('engine').textContent = 'Local engine connected';
+    await findFormats();
+  } catch (error) { status(error.message, true); }
+});
+async function renderJobs() {
+  const version = ++jobsVersion;
+  const jobs = await request('engine-jobs');
+  if (version !== jobsVersion) return;
+  const rows = Object.values(jobs).slice(-3).map(job => {
+    const row = element('div', '', 'job');
+    row.append(element('strong', job.title || 'Video'));
+    const text = job.status === 'complete' ? `Saved · ${job.filename?.split(/[\\/]/).pop()}` : job.status === 'failed' ? job.error : `${job.status === 'starting' ? 'Preparing…' : job.status === 'merging' ? 'Combining video and audio…' : `${job.percent ?? '…'}% of current track`}${job.speed && job.status === 'downloading' ? ` · ${sizeLabel(job.speed)}/s` : ''}`;
+    row.append(element('p', text));
+    if (!['complete', 'failed'].includes(job.status)) {
+      const progress = document.createElement('progress'); progress.max = 100; if (job.percent !== null) progress.value = job.percent || 0; progress.setAttribute('aria-label', 'Download progress');
+      const cancel = button('Cancel', 'text-button', () => request('engine-cancel', { jobId: job.jobId }));
+      row.append(progress, cancel);
+    }
+    return row;
+  });
+  $('jobs').replaceChildren(...rows);
+  const latest = Object.values(jobs).at(-1);
+  if (latest?.status === 'complete' && !Object.values(jobs).some(job => !['complete', 'failed'].includes(job.status)) && $('status').textContent.startsWith('Downloading with')) status('Download complete. Saved to your Downloads folder.');
+}
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'session' && changes[`tab:${tabId}`] && view === 'current') scheduleRender();
+  if (area === 'session' && changes.engineJobs) renderJobs().catch(error => status(error.message, true));
 });
 try {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -137,4 +184,7 @@ try {
   $('site').textContent = tab?.url?.startsWith('http') ? new URL(tab.url).hostname : 'Open a website to find videos';
   await render();
   try { await request('scan'); await render(); } catch { status('Scanning is unavailable here. Try a website tab.', true); }
+  engineConnected = (await request('engine-status')).ready;
+  if (engineConnected) { $('engine').textContent = 'Local engine connected'; if (/\.(youtube\.com|vimeo\.com)$/.test(`.${new URL(tab.url).hostname}`)) findFormats(); }
+  await renderJobs();
 } catch (error) { status(error.message, true); }

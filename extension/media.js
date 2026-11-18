@@ -30,7 +30,7 @@ export function mergeMedia(existing, incoming) {
 }
 
 export function filename(item, customName = '') {
-  let title = (customName.trim() || item.title || 'video').replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '').replace(/\.(mp4|webm|ogv|mov|m4v)$/i, '') || 'video';
+  let title = (customName.trim() || item.title || 'video').replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '').replace(/\.(mp4|webm|mkv|ogv|mov|m4v)$/i, '') || 'video';
   const chars = Array.from(title);
   while (new TextEncoder().encode(chars.join('')).length > 180) chars.pop();
   title = chars.join('').trim();
