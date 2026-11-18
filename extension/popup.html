@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video Download Helper</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><div class="brand"><span class="mark" aria-hidden="true">↙</span><div><h1>Video Helper<span class="dot">.</span></h1><p>Yours to keep.</p></div></div><span class="free">FREE & OPEN</span></header>
+  <main>
+    <div class="page"><span class="eyebrow">CURRENT WEBSITE</span><p id="site">Loading…</p></div>
+    <nav aria-label="Video lists"><button id="current" class="tab active" aria-pressed="true">On this page <span id="count">0</span></button><button id="saved" class="tab" aria-pressed="false">Saved videos</button></nav>
+    <div class="toolbar"><p id="summary">Looking for videos…</p><button id="scan" class="scan">↻ Scan page</button></div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <section id="videos" aria-label="Detected videos"></section>
+    <aside id="hint">Play a video, then scan again. Some players reveal their files only after playback starts.</aside>
+  </main>
+  <footer><span>Local. Private. No limits on downloads.</span><button id="downloads">Downloads ↗</button></footer>
+  <script type="module" src="popup.js"></script>
+</body></html>
