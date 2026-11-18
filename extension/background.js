@@ -1,4 +1,4 @@
-import { mediaInfo, mergeMedia, filename } from './media.js';
+import { mediaInfo, mergeMedia, filename, groupMedia } from './media.js';
 import { scanPage } from './scan.js';
 
 // Serialize storage changes to prevent lost discoveries from simultaneous responses.
@@ -14,7 +14,8 @@ async function readTab(id) {
 }
 async function writeTab(id, record) {
   await chrome.storage.session.set({ [tabKey(id)]: record });
-  await chrome.action.setBadgeText({ tabId: id, text: record.items.length ? String(record.items.length) : '' }).catch(() => {});
+  const count = groupMedia(record.items).length;
+  await chrome.action.setBadgeText({ tabId: id, text: count ? String(count) : '' }).catch(() => {});
   await chrome.action.setBadgeBackgroundColor({ tabId: id, color: '#216557' }).catch(() => {});
 }
 
@@ -62,15 +63,21 @@ async function handle(message) {
   const item = [...record.items, ...saved].find(item => item.url === message.url);
   if (!item || !mediaInfo(item.url, item.mime)) throw new Error('Video is no longer available. Scan the page again.');
   if (message.type === 'save') {
-    if (!saved.some(entry => entry.url === item.url)) {
+    if (message.name !== undefined && typeof message.name !== 'string') throw new Error('Enter a valid video name.');
+    const entry = { ...item, customName: message.name?.trim() ? filename(item, message.name) : item.customName };
+    const index = saved.findIndex(entry => entry.url === item.url);
+    if (index >= 0) saved[index] = entry;
+    else {
       if (saved.length >= 200) throw new Error('Saved list is full (200). Remove a video first.');
-      await chrome.storage.local.set({ saved: [...saved, item] });
+      saved.push(entry);
     }
+    await chrome.storage.local.set({ saved });
     return true;
   }
   if (message.type === 'download') {
     if (item.stream) throw new Error('This stream needs merging, which is outside version 1.');
-    return chrome.downloads.download({ url: item.url, filename: filename(item), conflictAction: 'uniquify', saveAs: false });
+    if (message.name !== undefined && typeof message.name !== 'string') throw new Error('Enter a valid video name.');
+    return chrome.downloads.download({ url: item.url, filename: filename(item, message.name || item.customName || ''), conflictAction: 'uniquify', saveAs: false });
   }
   throw new Error('Unknown action.');
 }

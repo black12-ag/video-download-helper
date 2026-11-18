@@ -18,14 +18,33 @@ export function mergeMedia(existing, incoming) {
     if (!info) continue;
     const old = items.get(info.url) || {};
     const next = { ...old, ...info };
-    for (const key of ['title', 'pageUrl', 'width', 'height', 'size', 'mime']) if (item[key]) next[key] = item[key];
+    for (const key of ['pageUrl', 'width', 'height', 'size', 'mime', 'groupKey', 'poster', 'duration', 'qualityLabel']) if (item[key]) next[key] = item[key];
+    if (item.title && (!old.title || (item.titleRank || 0) >= (old.titleRank || 0))) {
+      next.title = item.title;
+      next.titleRank = item.titleRank || 0;
+    }
     items.set(info.url, next);
   }
   // shortcut: keep 200 findings per tab; add pagination if real pages need more.
   return [...items.values()].slice(-200);
 }
 
-export function filename(item) {
-  const title = (item.title || 'video').replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '').slice(0, 120) || 'video';
-  return `${title.replace(/\.(mp4|webm|ogv|mov|m4v)$/i, '')}${item.height ? `-${item.height}p` : ''}.${item.format.toLowerCase()}`;
+export function filename(item, customName = '') {
+  let title = (customName.trim() || item.title || 'video').replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '').replace(/\.(mp4|webm|ogv|mov|m4v)$/i, '') || 'video';
+  const chars = Array.from(title);
+  while (new TextEncoder().encode(chars.join('')).length > 180) chars.pop();
+  title = chars.join('').trim();
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(title)) title = `_${title}`;
+  return `${title}${!customName.trim() && item.height ? `-${item.height}p` : ''}.${item.format.toLowerCase()}`;
+}
+
+export function groupMedia(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = item.groupKey || item.url;
+    if (!groups.has(key)) groups.set(key, { key, items: [] });
+    groups.get(key).items.push(item);
+  }
+  for (const group of groups.values()) group.items.sort((a, b) => Number(Boolean(a.stream)) - Number(Boolean(b.stream)) || (b.height || 0) - (a.height || 0));
+  return [...groups.values()].sort((a, b) => (b.items[0].titleRank || 0) - (a.items[0].titleRank || 0) || (b.items[0].height || 0) - (a.items[0].height || 0));
 }

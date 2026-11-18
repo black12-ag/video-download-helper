@@ -11,7 +11,9 @@ A small, independent, open-source video downloader for Chromium browsers. No acc
 1. Download or clone this repository.
 2. In a Chromium browser, open `chrome://extensions` (or its equivalent), enable **Developer mode**, then choose **Load unpacked**.
 3. Select the **extension** folder (not the repository root). Pin Video Download Helper in the toolbar.
-4. Open a website, play a video, and click Video Download Helper. Use **Scan page** to refresh. Each available file appears separately. Click **Download** to save it to your normal Downloads folder; use **Downloads ↗** to see progress, pause/resume, and errors.
+4. Open a website, play a video, and click Video Download Helper. It scans automatically; use **↻ Scan page** to refresh. Choose an available quality, edit the filename if you want, then click **Download**. Use **Downloads ↗** for progress, pause/resume, and errors.
+
+Already installed? Replace the extension files with the new release and click **Reload** in your browser's extensions manager. Saved videos remain on this device when reloading an existing installation.
 
 Chrome/Chromium 120+ required. Orca is Chromium based, but its extension installation UI must expose Load unpacked; installation in Orca itself has not yet been verified. No store listing or signed extension is provided.
 
@@ -20,13 +22,15 @@ Chrome/Chromium 120+ required. Orca is Chromium based, but its extension install
 - Direct MP4, WebM, Ogg, MOV and M4V files, including signed URLs.
 - Video response MIME types, even when URLs lack a file extension.
 - Page videos, source elements, media links, performance resources and accessible embedded frames.
-- Actual video dimensions when the browser exposes them, and file size when the server supplies it. Different discovered quality files appear separately; the extension does not invent qualities or upscale.
+- Actual video dimensions when the browser exposes them, and file size when the server supplies it. Related source files from the same video appear in a quality selector. Unrelated videos stay separate; the extension does not invent qualities, bitrates or upscale.
+- Automatic names from a video's title/accessible label/caption, then page metadata/title as a fallback. Edit the filename directly or use the pencil button. Renaming preserves the real source format; changing `.mp4` to `.webm` in a name does not convert the file. Saved videos remember edited names.
+- Lightweight poster thumbnails and duration when the page provides them. There are no autoplay previews, remote fonts or UI libraries. Live discovery updates are batched and do not interrupt filename editing.
 - Per-tab discovery, duplicate removal, toolbar count, and a local saved-video list.
 - Native browser downloads: streams directly to disk, without buffering the whole video in extension memory or routing through a third party. Existing filenames are preserved through automatic uniquifying.
 
 ## Limits
 
-HLS (`m3u8`) and DASH (`mpd`) manifests are detected and labeled, but not merged/downloaded as videos in v0.1. Blob URLs, DRM, live-stream recording, format conversion, audio extraction, casting, and site-specific extractors are outside this version. Some sites require special authentication/referrer headers, expire URLs, or split audio/video. Downloads may fail there; the browser download page shows the failure. No universal website compatibility or speed advantage is claimed.
+HLS (`m3u8`) and DASH (`mpd`) manifests are detected and labeled, but not merged/downloaded as videos in v0.2. Blob URLs, DRM, live-stream recording, format conversion, audio extraction, casting, and site-specific extractors are outside this version. Some sites require special authentication/referrer headers, expire URLs, or split audio/video. Downloads may fail there; the browser download page shows the failure. No universal website compatibility or speed advantage is claimed.
 
 Play the video after installing, then scan. Network observation begins when the extension is enabled; it cannot recover past response headers. A tab's results clear on navigation or close. Only discovered links can be downloaded. Lists are capped at 200 entries; saved links can expire. Save for later is a bookmark, not an offline copy.
 

@@ -17,3 +17,13 @@ Times are one observed run and vary with server, cache and connection. Earlier p
 References inspected: [Video Downloader Professional](https://chromewebstore.google.com/detail/video-downloader-professi/elicpjhcidhpjomhibiffojpinpmmpil?hl=en) in Orca and with REA; [Video Download Helper](https://chromewebstore.google.com/detail/video-download-helper/lmjnegcaeklhafolokijcfjliaokphfk) public listing. REA `inspect_web_page` evidence ID: `ev_0a351bcef7e0cb5de725aaf755a084af01f1b626c6fe05747821b4a57aa89bb0`. This establishes public listing observations, not proprietary extension internals. No competitor code or assets were used and no competitor speed benchmark was performed.
 
 Not verified: installation in Orca/Comet, extension-store review, all websites, large multi-gigabyte transfers, login-only websites, DRM, live streams or HLS/DASH merging. The extension was installed only in the disposable test browser.
+
+## v0.2.0 popup and naming checks
+
+Seven unit tests, syntax checks and the browser integration harness passed after the compact-popup update. The actual extension correctly grouped three related sources (two MP4 qualities and a WebM), retained separate unrelated videos, used the video title instead of the page title, displayed a supplied poster, and matched toolbar/popup counts. The popup fit within 600 px height and had no horizontal overflow.
+
+Editing a filename survived a concurrent scan. Selecting another source preserved the custom name and changed its extension to the real media format. Both renamed Amharic MP4 and WebM files landed on disk with the expected names and SHA-256 hashes matching their selected source bytes. Saved-name edits persisted in local storage, and a typed `.webm` suffix normalized to `.mp4` when the selected file was MP4. Untrusted titles rendered as text. Existing discovery, save/remove, error, stream and navigation checks passed.
+
+The harness restores native download behavior and sets a disposable browser download directory. Playwright's automation download override otherwise substitutes UUID artifact names (or bypasses extension filename handling), which cannot prove real user-visible naming. Personal browser settings were not changed.
+
+Latest observed browser timings, including server/cache variation: initial local discovery with page load 873 ms; exact 1,410,297-byte local download 39 ms; public W3Schools MP4 0.53 s, MDN MP4 0.17 s, W3C MP4 2.70 s. All public MP4 headers and total byte counts were checked. These are observations, not a comparison or guaranteed speed increase.
