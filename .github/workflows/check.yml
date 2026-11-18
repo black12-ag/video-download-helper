@@ -12,5 +12,16 @@ jobs:
           node-version: 22
       - run: npm test
       - run: npm run check
-      - run: npm run test:companion
       - run: python3 scripts/package.py
+  browser-streams:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:hls
+      - run: npm run test:browser

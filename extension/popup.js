@@ -2,7 +2,7 @@ import { filename, groupMedia } from './media.js';
 import { activeTransfer, transferSummary, formatBytes } from './transfers.js';
 
 const $ = id => document.getElementById(id);
-let tabId, view = 'current', renderVersion = 0, transferVersion = 0, transferTimer, refreshTimer, engineConnected = false;
+let tabId, view = 'current', renderVersion = 0, transferVersion = 0, transferTimer, refreshTimer;
 const selections = new Map(), names = new Map(), cardViews = new Map();
 let transfers = [];
 async function request(type, extra = {}) {
@@ -27,13 +27,28 @@ function button(text, className, action) {
   return node;
 }
 const sizeLabel = bytes => bytes ? bytes < 1048576 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB` : 'Size unknown';
-const qualityLabel = item => `${item.format} · ${item.width && item.height ? `${item.width}×${item.height}` : item.qualityLabel || 'Resolution unavailable'}${item.codec ? ` · ${item.codec}` : ''} · ${item.bitrate ? `${Math.round(item.bitrate)} kb/s bitrate` : item.stream ? 'Stream' : `${item.approximate && item.size ? '~' : ''}${sizeLabel(item.size)}`}`;
-function showSetup() { $('engine-setup').hidden = false; $('extension-id').textContent = `Extension ID: ${chrome.runtime.id}`; }
+const qualityLabel = item => `${item.format} · ${item.hls && item.qualityLabel ? item.qualityLabel.slice(0, 140) : item.width && item.height ? `${item.width}×${item.height}` : item.qualityLabel || 'Resolution unavailable'}${item.codec ? ` · ${item.codec}` : ''} · ${item.bitrate ? `${Math.round(item.bitrate)} kb/s bitrate` : item.stream ? 'Stream' : `${item.approximate && item.size ? '~' : ''}${sizeLabel(item.size)}`}`;
 async function findFormats(url) {
-  if (!engineConnected) { showSetup(); return; }
-  $('formats').disabled = true; status('Finding formats and audio…');
-  try { await request('engine-inspect', url ? { url } : {}); await render(); status('Formats ready. Choose a quality and download.'); }
-  catch (error) { status(error.message, true); }
+  $('formats').disabled = true; status('Inspecting HLS video and audio…');
+  try {
+    let record;
+    if (view === 'current') record = await request('scan');
+    else record = { items: await request('saved') };
+    const candidates = record.items.filter(item => url ? item.url === url : item.stream && item.format === 'HLS');
+    if (!candidates.length) throw new Error('Play the video and scan for an HLS stream first. DASH and protected streams are unsupported.');
+    const errors = []; let found = 0;
+    for (const item of candidates.slice(0, 8)) {
+      try { await request('hls-inspect', { url: item.url }); found++; }
+      catch (error) { errors.push(error.message); }
+    }
+    if (found && view === 'saved') {
+      view = 'current';
+      for (const id of ['current', 'saved']) { $(id).classList.toggle('active', id === view); $(id).setAttribute('aria-pressed', String(id === view)); }
+      $('scan').hidden = false;
+    }
+    await render();
+    status(found ? `Qualities ready. Choose a quality, then Download.${errors.length ? ` ${errors.length} stream(s) unsupported: ${errors[0]}` : ''}` : errors[0], !found);
+  } catch (error) { status(error.message, true); }
   finally { $('formats').disabled = false; }
 }
 function transferView() {
@@ -55,8 +70,9 @@ function transferView() {
     current = job; node.hidden = !job;
     if (!job) return;
     node.dataset.state = job.status;
-    if (Number.isFinite(job.percent)) { progress.value = job.percent; percent.textContent = `${Math.floor(job.percent)}%`; }
-    else { progress.removeAttribute('value'); percent.textContent = job.status === 'starting' ? 'Starting…' : 'Downloading…'; }
+    if (job.status === 'waiting') { progress.value = 0; percent.textContent = 'Choose Save…'; }
+    else if (Number.isFinite(job.percent)) { progress.value = job.percent; percent.textContent = `${job.approximate ? '~' : ''}${Math.floor(job.percent)}%`; }
+    else { progress.removeAttribute('value'); percent.textContent = job.status === 'waiting' ? 'Choose Save…' : job.status === 'starting' ? 'Starting…' : 'Downloading…'; }
     speed.textContent = job.status === 'complete' ? 'Saved' : job.status === 'cancelled' ? 'Stopped' : job.status === 'failed' ? 'Failed' : job.status === 'merging' ? 'Combining…' : job.speed > 0 ? `${formatBytes(job.speed)}/s` : '';
     stop.hidden = !activeTransfer(job);
     pause.hidden = job.backend !== 'browser' || !['downloading', 'paused'].includes(job.status);
@@ -138,13 +154,17 @@ function videoCard(group) {
   const download = button('Download', 'primary', async () => {
     if (item.stream) { await findFormats(item.url); return; }
     status('Starting download…');
-    await request('download', { url: item.url, name: name.value });
-    status('');
+    const result = await request('download', { url: item.url, name: name.value });
+    status(result?.backend === 'stream' ? 'Download tab opened. Choose Save there and keep it open until finished.' : '');
     await loadTransfers(true);
     cardViews.get(key)?.focusStop();
   });
-  const note = element('p', 'This video has separate streams. Find its qualities with the free local engine.', 'stream-note');
-  const update = () => { download.textContent = item.stream ? 'Find qualities' : 'Download'; note.hidden = !item.stream; };
+  const note = element('p', '', 'stream-note');
+  const update = () => {
+    download.textContent = item.stream ? 'Find qualities' : 'Download';
+    note.textContent = item.native ? 'This saved format used the old local engine. Reopen the original video page and scan for supported HLS qualities.' : 'Find qualities for supported HLS recordings. Protected, live and DASH streams are unsupported.';
+    note.hidden = !item.stream && !item.native;
+  };
   quality.addEventListener('change', () => {
     item = items.find(item => item.url === quality.value);
     selections.set(key, item.url);
@@ -164,7 +184,7 @@ function videoCard(group) {
     const running = activeTransfer(job);
     actions.hidden = running; name.disabled = running; rename.disabled = running;
     const dismiss = card.querySelector('.dismiss'); if (dismiss) dismiss.disabled = running;
-    note.hidden = running || !item.stream;
+    note.hidden = running || (!item.stream && !item.native);
     download.textContent = item.stream ? 'Find qualities' : job?.status === 'complete' ? 'Download again' : ['failed', 'cancelled'].includes(job?.status) ? 'Retry' : 'Download';
   } });
   return card;
@@ -187,7 +207,7 @@ async function render() {
   }
   $('videos').replaceChildren(...nodes);
   applyTransfers();
-  $('hint').textContent = view === 'saved' ? 'Saved links may expire. Download videos you want to keep.' : record.engineUrl ? 'Choose a format. The local engine combines video and audio automatically.' : record.blobs ? 'This player uses separate streams. Use Find all qualities with the local engine.' : 'Edit a filename to rename. Only available source qualities are shown.';
+  $('hint').textContent = view === 'saved' ? 'Saved links may expire. Download videos you want to keep.' : record.hlsUrls?.length ? 'HLS downloads open a tab. Choose Save there and keep it open until finished.' : record.blobs ? 'This player uses separate streams. Find all qualities supports unprotected HLS recordings.' : 'Edit a filename to rename. Only available source qualities are shown.';
 }
 function scheduleRender() {
   clearTimeout(refreshTimer);
@@ -207,22 +227,10 @@ $('scan').addEventListener('click', async () => {
   finally { $('scan').disabled = false; }
 });
 $('downloads').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://downloads/' }));
-$('engine').addEventListener('click', showSetup);
-$('close-setup').addEventListener('click', () => { $('engine-setup').hidden = true; });
 $('formats').addEventListener('click', () => findFormats());
-$('connect-engine').addEventListener('click', async () => {
-  try {
-    if (!await chrome.permissions.request({ permissions: ['nativeMessaging'] })) { status('Local engine permission was not granted.', true); return; }
-    engineConnected = (await request('engine-status')).ready;
-    if (!engineConnected) { status('Helper needs setup or an update. Follow the installation instructions, then connect again.', true); return; }
-    $('engine-setup').hidden = true;
-    $('engine').textContent = 'Local engine connected';
-    await findFormats();
-  } catch (error) { status(error.message, true); }
-});
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'session' && changes[`tab:${tabId}`] && view === 'current') scheduleRender();
-  if (area === 'session' && (changes.engineJobs || changes.browserJobs)) loadTransfers().catch(error => status(error.message, true));
+  if (area === 'session' && (changes.streamJobs || changes.browserJobs)) loadTransfers().catch(error => status(error.message, true));
 });
 try {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -233,8 +241,6 @@ try {
     const scanned = await request('scan'); await render();
     if (scanned.items.some(item => !item.height && !item.native && !item.stream)) setTimeout(() => request('scan').catch(() => {}), 1500);
   } catch { status('Scanning is unavailable here. Try a website tab.', true); }
-  engineConnected = (await request('engine-status')).ready;
-  if (engineConnected) { $('engine').textContent = 'Local engine connected'; if (/\.(youtube\.com|vimeo\.com)$/.test(`.${new URL(tab.url).hostname}`)) findFormats(); }
   await loadTransfers(true);
   request('probe-details').catch(() => {});
 } catch (error) { status(error.message, true); }

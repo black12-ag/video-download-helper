@@ -155,7 +155,7 @@ try {
   await message('remove', { url: item.url }); assert.equal((await message('saved')).length, 0);
   await assert.rejects(() => message('download', { url: 'https://example.org/unseen.mp4' }), /no longer available/);
   const stream = record.items.find(i => i.stream);
-  await assert.rejects(() => message('download', { url: stream.url }), /merging/);
+  await assert.rejects(() => message('download', { url: stream.url }), /qualit|HLS/);
   await ui.getByRole('button', { name: /^On this page/ }).click();
   await ui.getByRole('article', { name: 'Mountain trip', exact: true }).waitFor();
   assert.ok(await ui.evaluate(() => document.body.scrollWidth <= document.body.clientWidth), 'popup has no horizontal overflow');
@@ -163,9 +163,9 @@ try {
   await mkdir('test-results', { recursive: true });
   await ui.locator('body').screenshot({ path: 'test-results/popup.png' });
   await ui.getByRole('button', { name: 'Find all qualities', exact: true }).click();
-  await ui.getByRole('region', { name: 'Local engine setup' }).waitFor();
-  assert.ok((await ui.locator('#extension-id').innerText()).includes(id));
-  await ui.getByRole('button', { name: 'Close', exact: true }).click();
+  await ui.waitForFunction(() => !document.getElementById('formats').disabled);
+  assert.match(await ui.locator('#status').innerText(), /HLS|media|playlist|stream/i);
+  assert.equal(await ui.locator('#engine-setup').count(), 0, 'no installed-helper UI');
   await ui.getByRole('article', { name: 'Mountain trip', exact: true }).getByRole('button', { name: 'Dismiss video' }).click();
   assert.equal((await message('scan')).items.some(item => item.title === 'Mountain trip'), false, 'dismissed sources stay hidden across scans');
   const downloadsTab = context.waitForEvent('page');
@@ -173,7 +173,7 @@ try {
   const downloadsPage = await downloadsTab;
   await downloadsPage.waitForURL('chrome://downloads/');
   await downloadsPage.close();
-  console.log('PASS setup/close, dismiss stays hidden, native browser Downloads button');
+  console.log('PASS built-in HLS error state, no helper UI, dismiss stays hidden, browser Downloads button');
   await page.goto(`${origin}/slow-page`);
   await message('scan'); await message('probe-details');
   assert.equal((await message('list')).items.find(item => item.url.endsWith('/slow.mp4')).size, slowFixture.length, 'HEAD resolves size without downloading the video');

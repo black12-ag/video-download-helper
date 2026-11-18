@@ -1,4 +1,4 @@
-export const activeTransfer = job => ['starting', 'downloading', 'paused', 'merging'].includes(job?.status);
+export const activeTransfer = job => ['waiting', 'starting', 'downloading', 'paused', 'merging'].includes(job?.status);
 
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return 'Unknown size';
@@ -42,6 +42,7 @@ export function transferSummary(job) {
   if (job.status === 'failed') return job.error || 'Download failed';
   if (job.status === 'merging') return `${size} · Combining video and audio…`;
   if (job.status === 'paused') return `${size} · Paused`;
+  if (job.status === 'waiting') return 'Open the download tab and choose Save to start.';
   if (job.status === 'starting') return 'Starting download…';
   return `${size} · ${job.speed > 0 ? `${formatBytes(job.speed)}/s` : 'Measuring speed…'} · ${formatTime(job.eta)}`;
 }

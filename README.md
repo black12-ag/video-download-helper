@@ -1,66 +1,68 @@
 # Video Download Helper
 
-A small, independent, open-source video downloader for Chromium browsers. No account, ads, paywall, watermark, telemetry or cloud server. MIT licensed. Direct-file downloads need no runtime dependencies.
+A free, open-source **browser extension**. Direct files and supported HLS recordings save entirely through the browser. No desktop app, installed helper, Python, FFmpeg, native messaging, account, ads or developer cloud service is required to use it.
 
-**Stream downloads:** an optional [free local engine](companion/README.md) uses installed yt-dlp and FFmpeg to discover formats and combine separate video/audio. Direct-file downloads need only the extension. The helper is included in the release ZIP; binaries and dependencies are not bundled. Native messaging must be enabled explicitly and supported by your browser.
+**Independent project:** this is not the SAS ACLAP store extension and is not affiliated with it.
 
-**Independent project:** despite the requested project name, this is not the SAS ACLAP extension from the Chrome Web Store and is not affiliated with it. Use a distinct brand before submitting to an extension store.
-
-![Video Download Helper popup](docs/popup.png)
+![Extension download tab](docs/extension-stream.png)
 
 ## Install
 
-1. Download or clone this repository.
-2. In a Chromium browser, open `chrome://extensions` (or its equivalent), enable **Developer mode**, then choose **Load unpacked**.
-3. Select the **extension** folder (not the repository root). Pin Video Download Helper in the toolbar.
-4. Open a website, play a video, and click Video Download Helper. It scans automatically; use **↻ Scan page** to refresh. Choose a quality, edit the filename if you want, then click **Download**. The row changes to live progress: percentage, downloaded/total bytes, transfer speed, estimated time and **Stop**. Browser downloads also offer **Pause / Resume**. Reopening the popup restores its active transfer view.
+1. Download the latest release ZIP and extract it.
+2. In a current desktop Chromium browser, open its Extensions page, enable **Developer mode**, then choose **Load unpacked**.
+3. Select the extracted folder containing `manifest.json`. Pin Video Download Helper in the toolbar.
 
-Already installed? Replace the extension files with the new release and click **Reload** in your browser's extensions manager. Saved videos remain on this device when reloading an existing installation.
+From a source checkout, load the `extension/` folder instead. Updating an existing installation: replace its files and click **Reload**. Saved links remain on this device. Legacy helper-only saved format entries require reopening their original page and rescanning; they are not silently downloaded as HTML or deleted. The old optional helper is no longer used or bundled.
 
-For v0.4 native-stream progress, rerun the included local-engine setup as well; older helpers do not report combined byte counts. Direct browser-file progress does not need the helper.
+Tested in Chrome for Testing on macOS. Other browsers must expose the required extension and File System Access APIs. No store listing, installer or separate desktop edition is provided.
 
-Chrome/Chromium 120+ required. Orca is Chromium based, but its extension installation UI must expose Load unpacked; installation in Orca itself has not yet been verified. No store listing or signed extension is provided.
+## Download a video
 
-## What works
+- **Direct files:** open a website, play its video, then open the extension. Choose an available file, edit its name if wanted, and click **Download**. The row shows percentage, bytes, measured speed, estimated time, Pause/Resume and Stop. Stopped/failed transfers offer Retry. Reopening the popup restores current progress.
+- **HLS recordings:** play the video and use **Find all qualities** or **Find qualities**. For a supported recording, choose a discovered video/audio pair and click Download. An **extension download tab** opens. Click **Save video…**, choose the destination and keep that tab open until saving completes. Closing the popup does not interrupt it. Stop aborts the file transaction; closing the download tab cancels the job.
+- Use Save for a local bookmark, or the × button to dismiss findings until navigation. Saved links can expire and are not offline copies.
 
-- Direct MP4, WebM, Ogg video, MOV/M4V, MKV, AVI, WMV, FLV and 3GP files, including signed URLs. Recognition does not imply browser codec playback support.
-- Video response MIME types, even when URLs lack a file extension.
-- Page videos, source elements, media links, performance resources and accessible embedded frames.
-- Actual video dimensions when the browser exposes them, and file size when the server supplies it. Related source files from the same video appear in a quality selector. Unrelated videos stay separate; the extension does not invent qualities, bitrates or upscale.
-- Automatic names from a video's title/accessible label/caption, then page metadata/title as a fallback. Edit the filename directly or use the pencil button. Renaming preserves the real source format; changing `.mp4` to `.webm` in a name does not convert the file. Saved videos remember edited names.
-- Lightweight poster thumbnails and duration when the page provides them. There are no autoplay previews, remote fonts or UI libraries. Live discovery updates are batched and do not interrupt filename editing.
-- Per-tab discovery, duplicate removal, toolbar count, and a local saved-video list.
-- Inline progress for direct browser downloads as well as local-engine downloads. Unknown file sizes/ETA are labeled honestly; estimated native totals are marked `~`. Browser Pause/Resume and Stop control real browser transfers. Failed/stopped rows offer Retry. Completed files show final size and Saved.
-- With the local engine: supported YouTube/HLS/DASH formats, real dimensions/codecs/encoded bitrate, audio pairing/merging, and local progress/cancel. Encoded bitrate in the quality list is not download speed. The exact YouTube song in the owner's report was tested with video and audio; this is not an all-sites guarantee.
-- Native browser downloads: streams directly to disk, without buffering the whole video in extension memory or routing through a third party. Existing filenames are preserved through automatic uniquifying.
+The file chooser may ask whether to replace an existing file. Completed writes are committed only after finalization. Cancelling an active write preserves the previous file; a newly selected empty placeholder may remain depending on the browser. Browser downloads lists direct-file transfers; stream files are saved to the location you explicitly chose.
 
-## Limits
+## Supported and limited
 
-Without the local engine, HLS (`m3u8`) and DASH (`mpd`) manifests are detected but need **Find qualities** and engine setup to download. With the engine connected, yt-dlp handles supported non-DRM streams and FFmpeg combines audio/video. DRM, live recording, general format conversion, standalone audio extraction and casting are outside this version. Websites requiring authentication, special headers or anti-bot credentials can still refuse a download; no browser cookies are exported. Direct-file errors appear in Browser downloads; local-engine errors appear in the popup. No universal website compatibility or speed advantage is claimed.
+- Direct MP4, WebM, Ogg video, MOV/M4V, MKV, AVI, WMV, FLV and 3GP recognition by MIME/suffix, including extensionless video responses and signed URLs. Recognition does not imply browser codec playback support.
+- Page videos, source alternatives, links, network response metadata and accessible frames. Actual dimensions are preferred over labels. Unknown data stays unknown.
+- Browser HLS: finished **AVC/H.264 video with AAC audio**, muxed TS, separate compatible audio, and fragmented MP4 segments. Encoded packets are copied to MP4 without transcoding. Output is written incrementally to the chosen file, rather than buffering the full video in an extension blob. The library retains reader caches and per-packet indexing metadata; multi-hour/large-file memory behavior has not been exhaustively tested.
+- HLS progress can use media position, marked `~`; actual received bytes/rate are reported when available. A final file size is shown only after its writable file closes. Total input bytes/ETA may be unknown; a 100% conversion callback alone is not completion.
+- Unsupported in this browser path: encrypted/DRM media (including encrypted Netflix titles), live streams, DASH/MPD, non-AVC/AAC HLS, discontinuities/gaps/variables/I-frame playlists and HTTP redirects. Play/rescan to discover a final URL when redirects are involved. No universal website/quality or faster-than-other-tools claim.
+- Bounds: 32 playlists/tracks, nesting depth 4, playlists 2 MiB, segments 64 MiB, reader cache 16 MiB per URL. Explicit public-to-private/local resource references are rejected; browsers do not provide DNS pinning for this code.
 
-Play the video after installing, then scan. Network observation begins when the extension is enabled; it cannot recover past response headers. A tab's results clear on navigation or close. Only discovered links can be downloaded. Lists are capped at 200 entries; saved links can expire. Save for later is a bookmark, not an offline copy.
-
-Download only media you have permission to save. This project is independent of Link64 and SAS ACLAP and contains none of their code or assets.
+Signed-in requests stay inside the browser. The selected manifest origin can receive its normal browser cookies; unrelated origins are requested without credentials. This passed a controlled authenticated-site test, not a guarantee for every login system. No passwords/cookies are exported. Some sites refuse requests or require protected playback even when viewing works.
 
 ## Privacy and permissions
 
-See [PRIVACY.md](PRIVACY.md). Host access covers HTTP(S) pages and video CDNs so cross-origin players can be discovered. `webRequest` reads response metadata; it never blocks or changes requests. `activeTab` and `scripting` scan the selected page. `storage` keeps temporary findings and explicitly saved links on your device. `downloads` saves the chosen file. There is no cookie API access, remote code, analytics, or external backend.
+See [PRIVACY.md](PRIVACY.md). HTTP(S) host access and `webRequest` discover media across pages/CDNs. `activeTab`/`scripting` scan the selected page. `storage` keeps temporary jobs and explicitly saved links. `downloads` handles direct files. There is no cookies permission, native-messaging permission, remote code or backend server. Save uses the browser's file picker for the specific file you choose.
 
-The optional `nativeMessaging` permission connects only to the locally registered `org.video_download_helper.local` helper. You grant it from **Local engine → Connect local engine**. It is not required for direct files. The helper runs installed Python/yt-dlp/FFmpeg/Node tools and requests media from its original provider; it does not expose a network service or accept shell commands from a page.
+## Development and verification
 
-## Development and tests
-
-`npm test` runs the dependency-free unit tests. `npm run check` checks JavaScript syntax. `npm run package` creates a verified ZIP in `dist/`; extract the ZIP and load the extracted folder to install a release. GitHub Actions runs unit tests, syntax checks and packaging on pushes and pull requests.
-
-`npm run test:companion` runs nine dependency-free Python validation/protocol/progress checks. See [the reference audit](docs/reference-audit.md) for REA evidence, [Mister Download Manager review](docs/mdm-review.md) for ideas considered, and [validation](docs/validation.md) for checked results and limits.
-
-For browser integration tests, install Playwright as a development tool (`npm install --no-save playwright`, then `npx playwright install chromium`). A generated test video requires FFmpeg:
+Node 22.15+ is used for the tests. Runtime media code is bundled locally; npm dependencies are development tools only.
 
 ```sh
-ffmpeg -f lavfi -i testsrc2=s=960x540:d=5 -an -c:v libx264 -pix_fmt yuv420p /tmp/open-video-fixture.mp4
-node tests/browser.mjs
+npm ci
+npx playwright install chromium
+npm test
+npm run check
 ```
 
-The harness starts a disposable browser with the actual extension and a local HTTP fixture server. It checks MIME discovery, frames, dimensions, deduplication, manifests, saved links, exact downloaded bytes, rejected URLs, navigation cleanup, blob handling and HTTP failures. Public pages are smoke checks; unreachable pages are reported as UNVERIFIED. `VIDEO_FIXTURE`, `PLAYWRIGHT_MODULE` and `CHROMIUM_PATH` can point at existing tooling. Test output/screenshots go in ignored `test-results/`.
+For media/browser integration tests, install FFmpeg/FFprobe as **test tools**, then run:
 
-Contributions: keep runtime dependencies at zero, add a regression check for behavior changes, and document any new permissions. Never commit browsing data, signed media URLs, cookies, or credentials.
+```sh
+npm run test:hls
+npm run test:browser
+```
+
+`test:hls` verifies four real HLS outputs using a browser writer, FFprobe and full decoding, plus malformed/encrypted/live inputs, cancellation, URI/credential isolation and resource bounds. `test:browser` loads the actual extension, tests session-cookie requests, quality selection, registered download tabs, saving, cancellation and previous-file preservation. Automated file-selection tests use an OPFS handle; the actual browser Save API also produced a verified playable MP4 on this Mac. See [validation](docs/validation.md) for exact scope and limits.
+
+`npm run package` uses Python only as a build-time ZIP tool. It creates the complete extension archive in `dist/` and verifies required files/notices and absence of a companion installer/native permission. Users do not need Python.
+
+## Open-source components
+
+Our project code is MIT licensed. The unmodified bundled **Mediabunny 1.66.0** component is MPL-2.0; its full license, notices, exact archive hash and corresponding-source link are in [extension/vendor/NOTICE.md](extension/vendor/NOTICE.md). No external media encoder or executable is shipped. [Reference audit](docs/reference-audit.md) and [MDM review](docs/mdm-review.md) describe earlier research; their historical versions are not promises of current runtime support. No proprietary downloader code or GPL project code/assets were copied.
+
+Contributions should keep media credentials out of Git/logs, preserve browser-only operation, add meaningful media/output tests, and document any new permission or unsupported case.

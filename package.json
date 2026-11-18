@@ -1,7 +1,8 @@
 {
   "name": "video-download-helper",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test tests/*.test.js", "test:companion": "python3 -m unittest discover -s tests -p 'test_companion.py' -v", "check": "node --check extension/background.js && node --check extension/popup.js && node --check extension/scan.js && node --check extension/engine.js && node --check extension/downloads.js && node --check extension/transfers.js", "package": "python3 scripts/package.py" }
+  "scripts": { "test": "node --test tests/*.test.js", "test:hls": "node --test tests/hls-media.test.mjs", "test:browser": "node tests/browser-stream.mjs", "check": "node --check extension/background.js && node --check extension/popup.js && node --check extension/scan.js && node --check extension/downloads.js && node --check extension/transfers.js && node --check extension/hls-media.js && node --check extension/stream-jobs.js && node --check extension/stream.js", "package": "python3 scripts/package.py" },
+  "devDependencies": { "playwright": "1.65.1" }
 }
